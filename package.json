@@ -1,0 +1,50 @@
+{
+  "name": "chat-app-backend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "lint": "eslint 'src/**/*.js' --fix",
+    "test": "jest --runInBand"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "body-parser": "^1.20.2",
+    "cors": "^2.8.6",
+    "dotenv": "^16.6.1",
+    "express": "^4.22.1",
+    "express-async-errors": "^3.1.1",
+    "express-rate-limit": "^8.2.1",
+    "helmet": "^7.0.0",
+    "hpp": "^0.2.3",
+    "ioredis": "^5.3.2",
+    "jsonwebtoken": "^9.0.3",
+    "morgan": "^1.10.0",
+    "multer": "^2.0.2",
+    "nanoid": "^4.0.0",
+    "pg": "^8.18.0",
+    "socket.io": "^4.8.3",
+    "winston": "^3.8.2"
+  },
+  "devDependencies": {
+    "eslint": "^8.40.0",
+    "eslint-config-prettier": "^8.8.0",
+    "eslint-plugin-prettier": "^4.2.1",
+    "jest": "^29.5.0",
+    "prettier": "^2.8.8",
+    "supertest": "^7.2.2"
+  },
+  "description": "Chat app backend using Node.js, Express, MongoDB, Socket.IO, JWT auth",
+  "main": "src/server.js",
+  "directories": {
+    "test": "tests"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
