@@ -31,9 +31,9 @@ async function start() {
 
   const io = new Server(server, {
     cors: {
-      origin: config.FRONTEND_URL,
+      origin: config.CORS_ALLOW_ALL ? '*' : config.FRONTEND_URL,
       methods: ['GET', 'POST'],
-      credentials: true,
+      credentials: config.CORS_ALLOW_ALL ? false : true,
     },
   });
 

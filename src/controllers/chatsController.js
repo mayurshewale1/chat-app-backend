@@ -123,9 +123,30 @@ exports.sendMessage = async (req, res) => {
       expireAt,
     });
 
-    await chatRepo.updateLastMessage(chatId, content);
+    const lastMsgDisplay = (type || 'text') === 'media' ? '📷 Photo' : content;
+    await chatRepo.updateLastMessage(chatId, lastMsgDisplay);
 
     return res.status(201).json(toMessageResponse(message));
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.uploadChatImage = async (req, res) => {
+  const { chatId } = req.params;
+  if (!req.file) return res.status(400).json({ message: 'No image file provided' });
+
+  try {
+    const chat = await chatRepo.findById(chatId);
+    if (!chat) return res.status(404).json({ message: 'Chat not found' });
+
+    const members = await chatRepo.getMembers(chatId);
+    const memberIds = members.map((m) => m.id);
+    if (!memberIds.includes(req.user.id)) return res.status(403).json({ message: 'Not a member' });
+
+    const imagePath = `/uploads/chat-images/${req.file.filename}`;
+    return res.status(201).json({ path: imagePath });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error' });

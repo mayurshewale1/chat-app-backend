@@ -110,6 +110,9 @@ function initSockets(io) {
           expireAt,
         });
 
+        const lastMsgDisplay = payload.type === 'media' ? '📷 Photo' : payload.content;
+        await chatRepo.updateLastMessage(payload.chatId, lastMsgDisplay);
+
         io.to(`user:${payload.to}`).emit('message:new', toMessageResponse(message));
 
         cb && cb({ success: true, message: 'Sent', id: message.id });

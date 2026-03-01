@@ -5,6 +5,7 @@ const PORT = process.env.PORT || 4000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const DATABASE_URL = process.env.DATABASE_URL || process.env.PG_URI;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+const CORS_ALLOW_ALL = process.env.CORS_ALLOW_ALL === 'true';
 
 const JWT_SECRET = process.env.JWT_SECRET || (NODE_ENV === 'production' ? null : 'change_this_to_a_strong_secret');
 if (!JWT_SECRET && NODE_ENV === 'production') {
@@ -21,6 +22,7 @@ module.exports = {
   NODE_ENV,
   DATABASE_URL,
   FRONTEND_URL,
+  CORS_ALLOW_ALL,
   JWT_SECRET,
   ACCESS_TOKEN_EXPIRES_IN,
   REFRESH_TOKEN_EXPIRES_IN,

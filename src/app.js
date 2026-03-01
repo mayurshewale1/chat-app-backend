@@ -1,4 +1,5 @@
 require('express-async-errors');
+const path = require('path');
 const cors = require('cors');
 const express = require('express');
 const helmet = require('helmet');
@@ -12,7 +13,7 @@ const app = express();
 
 app.use(helmet());
 app.use(cors({
-  origin: config.FRONTEND_URL,
+  origin: config.CORS_ALLOW_ALL ? true : config.FRONTEND_URL,
   credentials: true,
 }));
 app.use(hpp());
@@ -31,6 +32,7 @@ app.get('/health', async (req, res) => {
 });
 
 app.use('/api', routes);
+app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
 app.use(errorHandler);
 
