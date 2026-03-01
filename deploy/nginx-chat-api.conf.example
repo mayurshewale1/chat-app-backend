@@ -26,6 +26,9 @@ server {
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
 
+    # Allow image uploads up to 30MB (required for chat images)
+    client_max_body_size 30M;
+
     location /api/ {
         limit_req zone=api_limit burst=20 nodelay;
         proxy_pass http://chat_backend;

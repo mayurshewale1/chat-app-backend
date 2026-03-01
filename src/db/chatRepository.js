@@ -75,6 +75,10 @@ const updateLastMessage = async (chatId, lastMessage) => {
   await query('UPDATE chats SET last_message = $1 WHERE id = $2', [lastMessage, chatId]);
 };
 
+const deleteById = async (chatId) => {
+  await query('DELETE FROM chats WHERE id = $1', [chatId]);
+};
+
 module.exports = {
   findById,
   getMembers,
@@ -82,5 +86,6 @@ module.exports = {
   findByMembers,
   create,
   updateLastMessage,
+  deleteById,
   getChatPartnerIds,
 };

@@ -4,7 +4,7 @@ const multer = require('multer');
 const { nanoid } = require('nanoid');
 
 const UPLOAD_DIR = path.join(__dirname, '..', '..', 'uploads', 'chat-images');
-const MAX_SIZE = 5 * 1024 * 1024; // 5MB
+const MAX_SIZE = 25 * 1024 * 1024; // 25MB
 
 if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });

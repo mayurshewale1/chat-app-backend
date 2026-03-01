@@ -38,6 +38,7 @@ async function start() {
   });
 
   initSockets(io);
+  require('./ioHolder').setIo(io);
 
   server.listen(config.PORT, () => {
     logger.info(`Server running on port ${config.PORT}`);
