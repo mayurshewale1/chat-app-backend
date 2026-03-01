@@ -29,6 +29,26 @@ exports.updateProfile = async (req, res) => {
   }
 };
 
+exports.uploadAvatar = async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ message: 'No image file provided' });
+  }
+  try {
+    const avatarPath = `/uploads/avatars/${req.file.filename}`;
+    const updated = await userRepo.updateProfile(req.user.id, { avatar: avatarPath });
+    if (!updated) return res.status(404).json({ message: 'User not found' });
+    return res.json({
+      uid: updated.uid,
+      username: updated.username,
+      displayName: updated.display_name,
+      avatar: avatarPath,
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Failed to update avatar' });
+  }
+};
+
 exports.uploadAppLogo = async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ message: 'No image file provided' });
