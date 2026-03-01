@@ -1,4 +1,5 @@
 const chatRepo = require('../db/chatRepository');
+const messageRepo = require('../db/messageRepository');
 const { getIo } = require('../ioHolder');
 const messageRepo = require('../db/messageRepository');
 const connectionRepo = require('../db/connectionRepository');
@@ -148,6 +149,31 @@ exports.uploadChatImage = async (req, res) => {
 
     const imagePath = `/uploads/chat-images/${req.file.filename}`;
     return res.status(201).json({ path: imagePath });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.clearChat = async (req, res) => {
+  const { chatId } = req.params;
+
+  try {
+    const chat = await chatRepo.findById(chatId);
+    if (!chat) return res.status(404).json({ message: 'Chat not found' });
+
+    const members = await chatRepo.getMembers(chatId);
+    const memberIds = members.map((m) => m.id);
+    if (!memberIds.includes(req.user.id)) return res.status(403).json({ message: 'Not a member' });
+
+    const otherUser = members.find((m) => m.id !== req.user.id);
+    await messageRepo.deleteByChatId(chatId);
+    await chatRepo.updateLastMessage(chatId, null);
+    if (otherUser) {
+      const io = getIo();
+      if (io) io.to(`user:${otherUser.id}`).emit('chat:cleared', { chatId });
+    }
+    return res.status(200).json({ status: 'cleared' });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error' });

@@ -65,6 +65,10 @@ const deleteById = async (id) => {
   await query('DELETE FROM messages WHERE id = $1', [id]);
 };
 
+const deleteByChatId = async (chatId) => {
+  await query('DELETE FROM messages WHERE chat_id = $1', [chatId]);
+};
+
 const deleteExpired = async () => {
   await query('DELETE FROM messages WHERE expire_at IS NOT NULL AND expire_at <= NOW()');
 };
@@ -83,6 +87,7 @@ module.exports = {
   create,
   updateStatus,
   deleteById,
+  deleteByChatId,
   deleteExpired,
   deleteByEphemeralMode,
 };
