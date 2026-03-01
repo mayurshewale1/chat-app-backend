@@ -1,8 +1,7 @@
 const chatRepo = require('../db/chatRepository');
 const messageRepo = require('../db/messageRepository');
-const { getIo } = require('../ioHolder');
-const messageRepo = require('../db/messageRepository');
 const connectionRepo = require('../db/connectionRepository');
+const { getIo } = require('../ioHolder');
 const { getOrCreatePrivateChat } = require('../services/chatService');
 
 const toMessageResponse = (row) => ({
