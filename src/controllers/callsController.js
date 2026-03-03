@@ -13,6 +13,16 @@ exports.deleteCall = async (req, res) => {
   }
 };
 
+exports.deleteAllCalls = async (req, res) => {
+  try {
+    const count = await callHistoryRepo.deleteAllForUser(req.user.id);
+    return res.json({ success: true, deleted: count });
+  } catch (err) {
+    console.error('delete all calls error', err);
+    return res.status(500).json({ message: 'Failed to delete calls' });
+  }
+};
+
 exports.getHistory = async (req, res) => {
   try {
     const rows = await callHistoryRepo.listByUserId(req.user.id);
