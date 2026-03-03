@@ -1,5 +1,18 @@
 const callHistoryRepo = require('../db/callHistoryRepository');
 
+exports.deleteCall = async (req, res) => {
+  try {
+    const deleted = await callHistoryRepo.deleteByIdForUser(req.params.id, req.user.id);
+    if (!deleted) {
+      return res.status(404).json({ message: 'Call not found' });
+    }
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('delete call error', err);
+    return res.status(500).json({ message: 'Failed to delete call' });
+  }
+};
+
 exports.getHistory = async (req, res) => {
   try {
     const rows = await callHistoryRepo.listByUserId(req.user.id);

@@ -39,6 +39,16 @@ const findLatestRingingBetween = async (userId1, userId2) => {
   return res.rows[0] || null;
 };
 
+const deleteByIdForUser = async (id, userId) => {
+  const res = await query(
+    `DELETE FROM call_history
+     WHERE id = $1 AND (caller_id = $2 OR callee_id = $2)
+     RETURNING id`,
+    [id, userId]
+  );
+  return res.rows[0] || null;
+};
+
 const listByUserId = async (userId) => {
   const res = await query(
     `SELECT ch.id, ch.caller_id, ch.callee_id, ch.call_type, ch.status, ch.created_at,
@@ -61,4 +71,5 @@ module.exports = {
   findLatestRinging,
   findLatestRingingBetween,
   listByUserId,
+  deleteByIdForUser,
 };
