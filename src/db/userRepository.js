@@ -14,7 +14,7 @@ const findByUid = async (uid) => {
 };
 
 const findById = async (id, excludePassword = true) => {
-  const cols = excludePassword ? 'id, uid, username, display_name, avatar, app_logo, recovery_email, last_seen, created_at' : '*';
+  const cols = excludePassword ? 'id, uid, username, display_name, avatar, app_logo, recovery_email, last_seen, subscription_expires_at, created_at' : '*';
   const res = await query(`SELECT ${cols} FROM users WHERE id = $1`, [id]);
   return res.rows[0] || null;
 };
@@ -47,7 +47,7 @@ const create = async ({ username, password, displayName, recoveryEmail }) => {
 
 const comparePassword = (plain, hashed) => bcrypt.compare(plain, hashed);
 
-const updateProfile = async (userId, { displayName, avatar, app_logo }) => {
+const updateProfile = async (userId, { displayName, avatar, app_logo, subscription_expires_at }) => {
   const updates = [];
   const values = [];
   let i = 1;
@@ -63,10 +63,14 @@ const updateProfile = async (userId, { displayName, avatar, app_logo }) => {
     updates.push(`app_logo = $${i++}`);
     values.push(app_logo);
   }
+  if (subscription_expires_at !== undefined) {
+    updates.push(`subscription_expires_at = $${i++}`);
+    values.push(subscription_expires_at);
+  }
   if (updates.length === 0) return findById(userId);
   values.push(userId);
   const res = await query(
-    `UPDATE users SET ${updates.join(', ')} WHERE id = $${i} RETURNING id, uid, username, display_name, avatar, app_logo, created_at`,
+    `UPDATE users SET ${updates.join(', ')} WHERE id = $${i} RETURNING id, uid, username, display_name, avatar, app_logo, subscription_expires_at, created_at`,
     values
   );
   return res.rows[0] || null;

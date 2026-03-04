@@ -104,3 +104,23 @@ BEGIN
     ALTER TABLE users ADD COLUMN last_seen TIMESTAMPTZ;
   END IF;
 END $$;
+
+-- Subscription for yearly plan (₹199)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='subscription_expires_at') THEN
+    ALTER TABLE users ADD COLUMN subscription_expires_at TIMESTAMPTZ;
+  END IF;
+END $$;
+
+-- Connection codes: one-time unique IDs for adding friends
+CREATE TABLE IF NOT EXISTS connection_codes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  code VARCHAR(20) NOT NULL UNIQUE,
+  used_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_connection_codes_user ON connection_codes(user_id);
+CREATE INDEX IF NOT EXISTS idx_connection_codes_code ON connection_codes(code);
+CREATE INDEX IF NOT EXISTS idx_connection_codes_unused ON connection_codes(code) WHERE used_at IS NULL;
