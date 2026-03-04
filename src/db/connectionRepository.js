@@ -71,6 +71,17 @@ const listPendingRequestsSent = async (userId) => {
   return res.rows;
 };
 
+const removeBetweenUsers = async (userId, otherUserId) => {
+  const res = await query(
+    `DELETE FROM connections
+     WHERE ((from_user_id = $1 AND to_user_id = $2) OR (from_user_id = $2 AND to_user_id = $1))
+     AND status = 'accepted'
+     RETURNING id`,
+    [userId, otherUserId]
+  );
+  return res.rowCount > 0;
+};
+
 module.exports = {
   findById,
   findByFromTo,
@@ -79,4 +90,5 @@ module.exports = {
   listAcceptedConnections,
   listPendingRequestsReceived,
   listPendingRequestsSent,
+  removeBetweenUsers,
 };

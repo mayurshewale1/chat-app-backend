@@ -1,5 +1,6 @@
 const userRepo = require('../db/userRepository');
 const connectionRepo = require('../db/connectionRepository');
+const blockRepo = require('../db/blockRepository');
 const connectionCodeRepo = require('../db/connectionCodeRepository');
 const { getOrCreatePrivateChat } = require('../services/chatService');
 const { getIo } = require('../ioHolder');
@@ -181,6 +182,62 @@ exports.listMyCodes = async (req, res) => {
   try {
     const codes = await connectionCodeRepo.listActiveByUser(req.user.id);
     return res.json(codes.map((c) => ({ id: c.id, code: c.code, createdAt: c.created_at })));
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.removeConnection = async (req, res) => {
+  const { otherUserId } = req.body;
+  if (!otherUserId) return res.status(400).json({ message: 'otherUserId required' });
+  try {
+    const removed = await connectionRepo.removeBetweenUsers(req.user.id, otherUserId);
+    if (!removed) return res.status(404).json({ message: 'Connection not found or already removed' });
+    return res.json({ message: 'Friend removed' });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.blockUser = async (req, res) => {
+  const { userId } = req.body;
+  if (!userId) return res.status(400).json({ message: 'userId required' });
+  if (userId === req.user.id) return res.status(400).json({ message: 'Cannot block yourself' });
+  try {
+    await blockRepo.block(req.user.id, userId);
+    await connectionRepo.removeBetweenUsers(req.user.id, userId);
+    return res.json({ message: 'User blocked' });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.unblockUser = async (req, res) => {
+  const { userId } = req.body;
+  if (!userId) return res.status(400).json({ message: 'userId required' });
+  try {
+    const unblocked = await blockRepo.unblock(req.user.id, userId);
+    if (!unblocked) return res.status(404).json({ message: 'User not blocked' });
+    return res.json({ message: 'User unblocked' });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.listBlocked = async (req, res) => {
+  try {
+    const rows = await blockRepo.listBlocked(req.user.id);
+    return res.json(rows.map((r) => ({
+      id: r.id,
+      uid: r.uid,
+      username: r.username,
+      displayName: r.display_name,
+      avatar: r.avatar || '👤',
+    })));
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error' });

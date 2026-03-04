@@ -124,3 +124,14 @@ CREATE TABLE IF NOT EXISTS connection_codes (
 CREATE INDEX IF NOT EXISTS idx_connection_codes_user ON connection_codes(user_id);
 CREATE INDEX IF NOT EXISTS idx_connection_codes_code ON connection_codes(code);
 CREATE INDEX IF NOT EXISTS idx_connection_codes_unused ON connection_codes(code) WHERE used_at IS NULL;
+
+-- Blocked users
+CREATE TABLE IF NOT EXISTS blocks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  blocker_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  blocked_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(blocker_id, blocked_id)
+);
+CREATE INDEX IF NOT EXISTS idx_blocks_blocker ON blocks(blocker_id);
+CREATE INDEX IF NOT EXISTS idx_blocks_blocked ON blocks(blocked_id);
