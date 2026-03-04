@@ -4,6 +4,7 @@ const userRepo = require('../db/userRepository');
 const messageRepo = require('../db/messageRepository');
 const callHistoryRepo = require('../db/callHistoryRepository');
 const chatRepo = require('../db/chatRepository');
+const blockRepo = require('../db/blockRepository');
 const logger = require('../utils/logger');
 
 const socketCountByUser = new Map();
@@ -93,6 +94,11 @@ function initSockets(io) {
         return cb && cb({ success: false, error: 'Rate limit exceeded' });
       }
       try {
+        const isBlocked = await blockRepo.isBlocked(user.id, payload.to) || await blockRepo.isBlocked(payload.to, user.id);
+        if (isBlocked) {
+          return cb && cb({ success: false, error: 'Cannot message blocked user' });
+        }
+
         let expireAt = null;
         if (payload.ephemeral?.mode === '24h') {
           expireAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
@@ -167,6 +173,11 @@ function initSockets(io) {
     socket.on('call:offer', async ({ to, offer, isVideo }) => {
       if (!socketRateLimit(socket.id)) return;
       try {
+        const isBlocked = await blockRepo.isBlocked(user.id, to) || await blockRepo.isBlocked(to, user.id);
+        if (isBlocked) {
+          io.to(`user:${user.id}`).emit('call:rejected', { from: to, reason: 'blocked' });
+          return;
+        }
         await callHistoryRepo.create({
           callerId: user.id,
           calleeId: to,

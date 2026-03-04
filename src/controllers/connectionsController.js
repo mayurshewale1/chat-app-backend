@@ -54,6 +54,9 @@ exports.sendRequest = async (req, res) => {
     if (!to) return res.status(404).json({ message: 'User not found' });
     if (to.id === req.user.id) return res.status(400).json({ message: 'Cannot add yourself' });
 
+    const isBlocked = await blockRepo.isBlocked(req.user.id, to.id) || await blockRepo.isBlocked(to.id, req.user.id);
+    if (isBlocked) return res.status(403).json({ message: 'Cannot send request to blocked user' });
+
     const exists = await connectionRepo.findByFromTo(req.user.id, to.id);
     if (exists) return res.status(409).json({ message: 'Request already exists' });
 
@@ -119,7 +122,12 @@ exports.rejectRequest = async (req, res) => {
 exports.listConnections = async (req, res) => {
   try {
     const connections = await connectionRepo.listAcceptedConnections(req.user.id);
-    return res.json(connections.map((c) => ({ id: c.id, uid: c.uid, username: c.username, displayName: c.display_name, avatar: c.avatar || '👤' })));
+    const filtered = [];
+    for (const c of connections) {
+      const blocked = await blockRepo.isBlocked(req.user.id, c.id) || await blockRepo.isBlocked(c.id, req.user.id);
+      if (!blocked) filtered.push(c);
+    }
+    return res.json(filtered.map((c) => ({ id: c.id, uid: c.uid, username: c.username, displayName: c.display_name, avatar: c.avatar || '👤' })));
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error' });
@@ -156,6 +164,8 @@ exports.addByCode = async (req, res) => {
     if (ownerId === myId) {
       return res.status(400).json({ message: 'Cannot add yourself' });
     }
+    const isBlocked = await blockRepo.isBlocked(myId, ownerId) || await blockRepo.isBlocked(ownerId, myId);
+    if (isBlocked) return res.status(403).json({ message: 'Cannot add blocked user' });
     const exists = await connectionRepo.findByFromTo(myId, ownerId);
     if (exists) {
       return res.status(409).json({ message: 'Connection request already exists' });

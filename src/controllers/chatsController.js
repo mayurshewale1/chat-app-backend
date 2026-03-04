@@ -1,6 +1,7 @@
 const chatRepo = require('../db/chatRepository');
 const messageRepo = require('../db/messageRepository');
 const connectionRepo = require('../db/connectionRepository');
+const blockRepo = require('../db/blockRepository');
 const { getIo } = require('../ioHolder');
 const { getOrCreatePrivateChat } = require('../services/chatService');
 
@@ -23,6 +24,9 @@ exports.startChat = async (req, res) => {
   if (!otherUserId) return res.status(400).json({ message: 'otherUserId required' });
 
   try {
+    const isBlocked = await blockRepo.isBlocked(req.user.id, otherUserId) || await blockRepo.isBlocked(otherUserId, req.user.id);
+    if (isBlocked) return res.status(403).json({ message: 'Cannot chat with blocked user' });
+
     const connections = await connectionRepo.listAcceptedConnections(req.user.id);
     const isFriend = connections.some((c) => c.id === otherUserId);
     if (!isFriend) return res.status(403).json({ message: 'User is not a friend. Add them first.' });
@@ -45,26 +49,28 @@ exports.startChat = async (req, res) => {
 exports.listChats = async (req, res) => {
   try {
     const chats = await chatRepo.findByMember(req.user.id);
-    const result = await Promise.all(
-      chats.map(async (c) => {
-        const members = await chatRepo.getMembers(c.id);
-        const other = members.find((m) => m.id !== req.user.id);
-        const lastMessage = await messageRepo.getLastMessage(c.id);
+    const result = [];
+    for (const c of chats) {
+      const members = await chatRepo.getMembers(c.id);
+      const other = members.find((m) => m.id !== req.user.id);
+      if (!other) continue;
+      const isBlocked = await blockRepo.isBlocked(req.user.id, other.id) || await blockRepo.isBlocked(other.id, req.user.id);
+      if (isBlocked) continue;
 
-        return {
-          chat: {
-            id: c.id,
-            _id: c.id,
-            members: members.map((m) => ({ id: m.id, uid: m.uid, username: m.username, displayName: m.display_name, avatar: m.avatar || '👤' })),
-            lastMessage: c.last_message,
-            createdAt: c.created_at,
-          },
-          otherId: other?.id,
-          otherUser: other ? { uid: other.uid, username: other.username, displayName: other.display_name, avatar: other.avatar || '👤', lastSeen: other.last_seen } : null,
-          lastMessage: lastMessage ? toMessageResponse(lastMessage) : null,
-        };
-      })
-    );
+      const lastMessage = await messageRepo.getLastMessage(c.id);
+      result.push({
+        chat: {
+          id: c.id,
+          _id: c.id,
+          members: members.map((m) => ({ id: m.id, uid: m.uid, username: m.username, displayName: m.display_name, avatar: m.avatar || '👤' })),
+          lastMessage: c.last_message,
+          createdAt: c.created_at,
+        },
+        otherId: other?.id,
+        otherUser: other ? { uid: other.uid, username: other.username, displayName: other.display_name, avatar: other.avatar || '👤', lastSeen: other.last_seen } : null,
+        lastMessage: lastMessage ? toMessageResponse(lastMessage) : null,
+      });
+    }
     return res.json(result);
   } catch (err) {
     console.error(err);
@@ -84,6 +90,12 @@ exports.getMessages = async (req, res) => {
     const members = await chatRepo.getMembers(chatId);
     const memberIds = members.map((m) => m.id);
     if (!memberIds.includes(req.user.id)) return res.status(403).json({ message: 'Not a member' });
+
+    const other = members.find((m) => m.id !== req.user.id);
+    if (other) {
+      const isBlocked = await blockRepo.isBlocked(req.user.id, other.id) || await blockRepo.isBlocked(other.id, req.user.id);
+      if (isBlocked) return res.status(403).json({ message: 'Cannot access chat with blocked user' });
+    }
 
     const messages = await messageRepo.findByChat(chatId, { limit, before });
     return res.json(messages.map(toMessageResponse));
@@ -105,6 +117,12 @@ exports.sendMessage = async (req, res) => {
     const members = await chatRepo.getMembers(chatId);
     const memberIds = members.map((m) => m.id);
     if (!memberIds.includes(req.user.id)) return res.status(403).json({ message: 'Not a member' });
+
+    const other = members.find((m) => m.id !== req.user.id);
+    if (other) {
+      const isBlocked = await blockRepo.isBlocked(req.user.id, other.id) || await blockRepo.isBlocked(other.id, req.user.id);
+      if (isBlocked) return res.status(403).json({ message: 'Cannot message blocked user' });
+    }
 
     const recipientId = to || members.find((m) => m.id !== req.user.id)?.id;
     if (!recipientId) return res.status(400).json({ message: 'Recipient not found' });
@@ -146,6 +164,12 @@ exports.uploadChatImage = async (req, res) => {
     const memberIds = members.map((m) => m.id);
     if (!memberIds.includes(req.user.id)) return res.status(403).json({ message: 'Not a member' });
 
+    const other = members.find((m) => m.id !== req.user.id);
+    if (other) {
+      const isBlocked = await blockRepo.isBlocked(req.user.id, other.id) || await blockRepo.isBlocked(other.id, req.user.id);
+      if (isBlocked) return res.status(403).json({ message: 'Cannot access chat with blocked user' });
+    }
+
     const imagePath = `/uploads/chat-images/${req.file.filename}`;
     return res.status(201).json({ path: imagePath });
   } catch (err) {
@@ -166,6 +190,10 @@ exports.clearChat = async (req, res) => {
     if (!memberIds.includes(req.user.id)) return res.status(403).json({ message: 'Not a member' });
 
     const otherUser = members.find((m) => m.id !== req.user.id);
+    if (otherUser) {
+      const isBlocked = await blockRepo.isBlocked(req.user.id, otherUser.id) || await blockRepo.isBlocked(otherUser.id, req.user.id);
+      if (isBlocked) return res.status(403).json({ message: 'Cannot access chat with blocked user' });
+    }
     await messageRepo.deleteByChatId(chatId);
     await chatRepo.updateLastMessage(chatId, null);
     if (otherUser) {
@@ -191,6 +219,10 @@ exports.deleteChat = async (req, res) => {
     if (!memberIds.includes(req.user.id)) return res.status(403).json({ message: 'Not a member' });
 
     const otherUser = members.find((m) => m.id !== req.user.id);
+    if (otherUser) {
+      const isBlocked = await blockRepo.isBlocked(req.user.id, otherUser.id) || await blockRepo.isBlocked(otherUser.id, req.user.id);
+      if (isBlocked) return res.status(403).json({ message: 'Cannot access chat with blocked user' });
+    }
     await chatRepo.deleteById(chatId);
     if (otherUser) {
       const io = getIo();
