@@ -11,6 +11,9 @@ const config = require('./config');
 
 const app = express();
 
+// Required when behind Nginx/reverse proxy - express-rate-limit uses X-Forwarded-For for client IP
+app.set('trust proxy', 1);
+
 app.use(helmet());
 app.use(cors({
   origin: config.CORS_ALLOW_ALL ? true : config.FRONTEND_URL,
