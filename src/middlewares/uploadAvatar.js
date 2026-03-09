@@ -27,7 +27,7 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({
   storage,
   fileFilter,
-  limits: { fileSize: 2 * 1024 * 1024 },
+  limits: { fileSize: 50 * 1024 * 1024 },
 });
 
 const uploadSingle = upload.single('avatar');
@@ -36,7 +36,7 @@ module.exports = (req, res, next) => {
   uploadSingle(req, res, (err) => {
     if (err) {
       if (err.code === 'LIMIT_FILE_SIZE') {
-        return res.status(400).json({ message: 'Image too large (max 2MB)' });
+        return res.status(400).json({ message: 'Image too large (max 50MB)' });
       }
       return res.status(400).json({ message: err.message || 'File upload failed' });
     }
