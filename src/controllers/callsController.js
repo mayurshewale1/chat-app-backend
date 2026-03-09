@@ -1,4 +1,46 @@
 const callHistoryRepo = require('../db/callHistoryRepository');
+const config = require('../config');
+
+/**
+ * Returns ICE servers for WebRTC (STUN + TURN).
+ * TURN enables calls across different networks (WiFi vs mobile data).
+ * Option A: Metered API - METERED_APP_NAME + METERED_API_KEY
+ * Option B: Static - TURN_URL, TURN_USERNAME, TURN_CREDENTIAL
+ */
+exports.getIceServers = async (req, res) => {
+  const defaultStun = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun.stunprotocol.org:3478' },
+  ];
+
+  if (config.METERED_APP_NAME && config.METERED_API_KEY) {
+    try {
+      const url = `https://${config.METERED_APP_NAME}.metered.live/api/v1/turn/credentials?apiKey=${config.METERED_API_KEY}`;
+      const resp = await fetch(url);
+      if (resp.ok) {
+        const data = await resp.json();
+        const servers = Array.isArray(data) ? data : (data.iceServers || data);
+        if (servers && servers.length > 0) {
+          return res.json({ iceServers: servers });
+        }
+      }
+    } catch (err) {
+      console.warn('Metered TURN fetch failed, falling back to STUN only:', err.message);
+    }
+  }
+
+  const iceServers = [...defaultStun];
+  if (config.TURN_URL && config.TURN_USERNAME && config.TURN_CREDENTIAL) {
+    iceServers.push({
+      urls: config.TURN_URL,
+      username: config.TURN_USERNAME,
+      credential: config.TURN_CREDENTIAL,
+    });
+  }
+  return res.json({ iceServers });
+};
 
 exports.deleteCall = async (req, res) => {
   try {

@@ -16,6 +16,15 @@ const ACCESS_TOKEN_EXPIRES_IN = process.env.ACCESS_TOKEN_EXPIRES_IN || '15m';
 const REFRESH_TOKEN_EXPIRES_IN = process.env.REFRESH_TOKEN_EXPIRES_IN || '7d';
 const LOG_LEVEL = process.env.LOG_LEVEL || 'info';
 
+// TURN servers for WebRTC calls across different networks (WiFi vs mobile data, etc.)
+// Option A: Metered API - set METERED_APP_NAME + METERED_API_KEY (fetches fresh credentials)
+// Option B: Static - set TURN_URL, TURN_USERNAME, TURN_CREDENTIAL
+const METERED_APP_NAME = process.env.METERED_APP_NAME; // e.g. chatapplicationsecure
+const METERED_API_KEY = process.env.METERED_API_KEY;
+const TURN_URL = process.env.TURN_URL;
+const TURN_USERNAME = process.env.TURN_USERNAME;
+const TURN_CREDENTIAL = process.env.TURN_CREDENTIAL;
+
 module.exports = {
   API_VERSION,
   PORT,
@@ -27,4 +36,9 @@ module.exports = {
   ACCESS_TOKEN_EXPIRES_IN,
   REFRESH_TOKEN_EXPIRES_IN,
   LOG_LEVEL,
+  METERED_APP_NAME,
+  METERED_API_KEY,
+  TURN_URL,
+  TURN_USERNAME,
+  TURN_CREDENTIAL,
 };
