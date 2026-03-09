@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
+    "migrate": "node src/db/runMigrations.js",
     "lint": "eslint 'src/**/*.js' --fix",
     "test": "jest --runInBand"
   },

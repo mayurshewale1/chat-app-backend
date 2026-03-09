@@ -61,6 +61,14 @@ const updateStatus = async (id, status) => {
   return res.rows[0] || null;
 };
 
+const setExpireAtAndStatus = async (id, expireAt, status = 'read') => {
+  const res = await query(
+    'UPDATE messages SET status = $1, expire_at = $2 WHERE id = $3 RETURNING *',
+    [status, expireAt, id]
+  );
+  return res.rows[0] || null;
+};
+
 const deleteById = async (id) => {
   await query('DELETE FROM messages WHERE id = $1', [id]);
 };
@@ -86,6 +94,7 @@ module.exports = {
   getLastMessage,
   create,
   updateStatus,
+  setExpireAtAndStatus,
   deleteById,
   deleteByChatId,
   deleteExpired,

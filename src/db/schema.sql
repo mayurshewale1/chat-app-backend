@@ -39,6 +39,16 @@ CREATE TABLE IF NOT EXISTS chat_members (
 
 CREATE INDEX IF NOT EXISTS idx_chat_members_user ON chat_members(user_id);
 
+-- Soft-delete: user "deletes" chat but we retain for 7 days (legal backup)
+CREATE TABLE IF NOT EXISTS deleted_chats (
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  chat_id UUID NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+  deleted_at TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (user_id, chat_id)
+);
+CREATE INDEX IF NOT EXISTS idx_deleted_chats_chat ON deleted_chats(chat_id);
+CREATE INDEX IF NOT EXISTS idx_deleted_chats_deleted_at ON deleted_chats(deleted_at);
+
 CREATE TABLE IF NOT EXISTS messages (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   chat_id UUID NOT NULL REFERENCES chats(id) ON DELETE CASCADE,

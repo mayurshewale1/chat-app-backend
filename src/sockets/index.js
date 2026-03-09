@@ -4,6 +4,7 @@ const userRepo = require('../db/userRepository');
 const messageRepo = require('../db/messageRepository');
 const callHistoryRepo = require('../db/callHistoryRepository');
 const chatRepo = require('../db/chatRepository');
+const deletedChatRepo = require('../db/deletedChatRepository');
 const blockRepo = require('../db/blockRepository');
 const logger = require('../utils/logger');
 
@@ -94,16 +95,13 @@ function initSockets(io) {
         return cb && cb({ success: false, error: 'Rate limit exceeded' });
       }
       try {
+        const userDeleted = await deletedChatRepo.isDeletedByUser(user.id, payload.chatId);
+        if (userDeleted) {
+          return cb && cb({ success: false, error: 'Chat not found' });
+        }
         const isBlocked = await blockRepo.isBlocked(user.id, payload.to) || await blockRepo.isBlocked(payload.to, user.id);
         if (isBlocked) {
           return cb && cb({ success: false, error: 'Cannot message blocked user' });
-        }
-
-        let expireAt = null;
-        if (payload.ephemeral?.mode === '24h') {
-          expireAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-        } else if (payload.ephemeral?.mode === '7d') {
-          expireAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
         }
 
         const message = await messageRepo.create({
@@ -113,7 +111,7 @@ function initSockets(io) {
           content: payload.content,
           type: payload.type || 'text',
           ephemeral: payload.ephemeral || null,
-          expireAt,
+          expireAt: null,
         });
 
         const lastMsgDisplay = payload.type === 'media' ? '📷 Photo' : payload.content;
@@ -158,9 +156,19 @@ function initSockets(io) {
       try {
         const m = await messageRepo.findById(messageId);
         if (!m) return;
+        if (m.to_user_id !== user.id) return;
         if (m.ephemeral_mode === 'viewOnce') {
           await messageRepo.deleteById(messageId);
           io.to(`user:${m.from_user_id}`).emit('message:status', { messageId, status: 'viewed_and_deleted' });
+          io.to(`user:${m.to_user_id}`).emit('message:deleted', { chatId: m.chat_id, messageId });
+        } else if (m.ephemeral_mode === '24h') {
+          const expireAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+          await messageRepo.setExpireAtAndStatus(messageId, expireAt, 'read');
+          io.to(`user:${m.from_user_id}`).emit('message:status', { messageId, status: 'read' });
+        } else if (m.ephemeral_mode === '7d') {
+          const expireAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+          await messageRepo.setExpireAtAndStatus(messageId, expireAt, 'read');
+          io.to(`user:${m.from_user_id}`).emit('message:status', { messageId, status: 'read' });
         } else {
           await messageRepo.updateStatus(messageId, 'read');
           io.to(`user:${m.from_user_id}`).emit('message:status', { messageId, status: 'read' });

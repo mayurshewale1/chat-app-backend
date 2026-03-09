@@ -26,6 +26,16 @@ exports.markRead = async (req, res) => {
       await messageRepo.deleteById(id);
       return res.json({ message: 'viewed and deleted' });
     }
+    if (m.ephemeral_mode === '24h') {
+      const expireAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      await messageRepo.setExpireAtAndStatus(id, expireAt, 'read');
+      return res.json({ message: 'updated' });
+    }
+    if (m.ephemeral_mode === '7d') {
+      const expireAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      await messageRepo.setExpireAtAndStatus(id, expireAt, 'read');
+      return res.json({ message: 'updated' });
+    }
 
     await messageRepo.updateStatus(id, 'read');
     return res.json({ message: 'updated' });
