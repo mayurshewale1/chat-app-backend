@@ -12,6 +12,7 @@ const toUserResponse = (row) => ({
   uid: row.uid,
   username: row.username,
   displayName: row.display_name,
+  avatar: row.avatar || '👤',
   recoveryEmail: row.recovery_email,
   createdAt: row.created_at,
 });

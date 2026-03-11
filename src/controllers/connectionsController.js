@@ -4,6 +4,7 @@ const blockRepo = require('../db/blockRepository');
 const connectionCodeRepo = require('../db/connectionCodeRepository');
 const { getOrCreatePrivateChat } = require('../services/chatService');
 const { getIo } = require('../ioHolder');
+const pushService = require('../services/pushService');
 
 exports.listPendingRequests = async (req, res) => {
   try {
@@ -61,6 +62,13 @@ exports.sendRequest = async (req, res) => {
     if (exists) return res.status(409).json({ message: 'Request already exists' });
 
     const conn = await connectionRepo.create(req.user.id, to.id);
+    // Push notification for friend request
+    const fromName = req.user.display_name || req.user.username || 'Someone';
+    pushService.notifyFriendRequest({
+      toUserId: to.id,
+      fromName,
+      requestId: conn.id,
+    }).catch(() => {});
     return res.status(201).json({
       id: conn.id,
       from: conn.from_user_id,
@@ -172,6 +180,14 @@ exports.addByCode = async (req, res) => {
     }
     const conn = await connectionRepo.create(myId, ownerId);
     await connectionCodeRepo.markUsed(codeRow.id);
+    // Push notification for friend request
+    const fromUser = await userRepo.findById(myId);
+    const fromName = fromUser?.display_name || fromUser?.username || 'Someone';
+    pushService.notifyFriendRequest({
+      toUserId: ownerId,
+      fromName,
+      requestId: conn.id,
+    }).catch(() => {});
     const io = getIo();
     if (io) io.to(`user:${ownerId}`).emit('connection:code-used', { codeId: codeRow.id });
     return res.status(201).json({

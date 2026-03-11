@@ -1,4 +1,5 @@
 const userRepo = require('../db/userRepository');
+const deviceTokenRepo = require('../db/deviceTokenRepository');
 
 exports.getMe = async (req, res) => {
   const user = req.user;
@@ -67,6 +68,20 @@ exports.uploadAppLogo = async (req, res) => {
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Failed to update app logo' });
+  }
+};
+
+exports.registerDeviceToken = async (req, res) => {
+  const { fcmToken, platform } = req.body;
+  if (!fcmToken || typeof fcmToken !== 'string') {
+    return res.status(400).json({ message: 'fcmToken required' });
+  }
+  try {
+    await deviceTokenRepo.upsert(req.user.id, fcmToken.trim(), platform || null);
+    return res.json({ message: 'Device token registered' });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error' });
   }
 };
 

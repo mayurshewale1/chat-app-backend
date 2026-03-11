@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const config = require('../config');
 const userRepo = require('../db/userRepository');
 const messageRepo = require('../db/messageRepository');
+const pushService = require('../services/pushService');
 const callHistoryRepo = require('../db/callHistoryRepository');
 const chatRepo = require('../db/chatRepository');
 const deletedChatRepo = require('../db/deletedChatRepository');
@@ -119,6 +120,20 @@ function initSockets(io) {
 
         io.to(`user:${payload.to}`).emit('message:new', toMessageResponse(message));
 
+        // Push notification when recipient is offline
+        if (!isOnline(payload.to)) {
+          const fromUser = await userRepo.findById(user.id);
+          const fromName = fromUser?.display_name || fromUser?.username || 'Someone';
+          const preview = payload.type === 'media' ? '📷 Photo' : (payload.content || 'New message');
+          pushService.notifyNewMessage({
+            toUserId: payload.to,
+            fromUserId: user.id,
+            fromName,
+            chatId: payload.chatId,
+            preview: preview.length > 80 ? preview.slice(0, 77) + '...' : preview,
+          }).catch(() => {});
+        }
+
         cb && cb({ success: true, message: 'Sent', id: message.id });
       } catch (err) {
         logger.error('message:send error', err);
@@ -202,6 +217,13 @@ function initSockets(io) {
           isVideo: !!isVideo,
           caller: callerInfo,
         });
+
+        // Push notification for incoming call (when app is backgrounded or killed)
+        pushService.notifyIncomingCall({
+          toUserId: to,
+          fromName: callerInfo?.displayName || callerInfo?.username || 'Someone',
+          isVideo: !!isVideo,
+        }).catch(() => {});
       } catch (err) {
         logger.warn('call:offer error', err);
         io.to(`user:${to}`).emit('call:incoming', { from: user.id, offer, isVideo: !!isVideo });
