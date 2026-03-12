@@ -7,6 +7,7 @@ const callHistoryRepo = require('../db/callHistoryRepository');
 const chatRepo = require('../db/chatRepository');
 const deletedChatRepo = require('../db/deletedChatRepository');
 const blockRepo = require('../db/blockRepository');
+const blockedWords = require('../services/blockedWords');
 const logger = require('../utils/logger');
 
 const socketCountByUser = new Map();
@@ -25,7 +26,7 @@ const toMessageResponse = (row) => ({
   status: row.status,
   ephemeral: row.ephemeral_mode ? { mode: row.ephemeral_mode } : null,
   expireAt: row.expire_at,
-  createdAt: row.created_at,
+  createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
 });
 
 function isOnline(userId) {
@@ -105,6 +106,11 @@ function initSockets(io) {
           return cb && cb({ success: false, error: 'Cannot message blocked user' });
         }
 
+        if (payload.type === 'text' && payload.content) {
+          const msgError = blockedWords.validateMessageContent(payload.content);
+          if (msgError) return cb && cb({ success: false, error: msgError });
+        }
+
         const message = await messageRepo.create({
           chatId: payload.chatId,
           fromUserId: user.id,
@@ -167,15 +173,23 @@ function initSockets(io) {
       }
     });
 
+    socket.on('chat:leave', async ({ chatId }) => {
+      try {
+        if (!chatId) return;
+        await messageRepo.markDeletedForUserInChat(user.id, chatId);
+      } catch (err) {
+        logger.warn('chat:leave error', err);
+      }
+    });
+
     socket.on('message:read', async ({ messageId }) => {
       try {
         const m = await messageRepo.findById(messageId);
         if (!m) return;
         if (m.to_user_id !== user.id) return;
         if (m.ephemeral_mode === 'viewOnce') {
-          await messageRepo.deleteById(messageId);
-          io.to(`user:${m.from_user_id}`).emit('message:status', { messageId, status: 'viewed_and_deleted' });
-          io.to(`user:${m.to_user_id}`).emit('message:deleted', { chatId: m.chat_id, messageId });
+          await messageRepo.updateStatus(messageId, 'read');
+          io.to(`user:${m.from_user_id}`).emit('message:status', { messageId, status: 'read' });
         } else if (m.ephemeral_mode === '24h') {
           const expireAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
           await messageRepo.setExpireAtAndStatus(messageId, expireAt, 'read');
@@ -329,11 +343,7 @@ function initSockets(io) {
           logger.warn('presence broadcast on disconnect failed', err);
         }
       }
-      try {
-        await messageRepo.deleteByEphemeralMode('deleteOnExit', user.id);
-      } catch (err) {
-        logger.warn('cleanup on disconnect failed', err);
-      }
+      // deleteOnExit is now handled by chat:leave when user navigates back
     });
   });
 }

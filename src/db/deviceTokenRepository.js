@@ -24,8 +24,13 @@ const remove = async (userId, fcmToken) => {
   );
 };
 
+const removeAllForUser = async (userId) => {
+  await query('DELETE FROM device_tokens WHERE user_id = $1', [userId]);
+};
+
 module.exports = {
   upsert,
   findByUserId,
   remove,
+  removeAllForUser,
 };

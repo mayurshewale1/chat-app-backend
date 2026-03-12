@@ -1,11 +1,8 @@
-const { Schema, model } = require('mongoose');
+const mongoose = require('mongoose');
 
-const ChatSchema = new Schema({
-  members: [{ type: Schema.Types.ObjectId, ref: 'User', required: true }],
-  lastMessage: { type: String },
-  createdAt: { type: Date, default: Date.now },
+const chatSchema = new mongoose.Schema({
+  last_message: { type: String },
+  created_at: { type: Date, default: Date.now },
 });
 
-ChatSchema.index({ members: 1 });
-
-module.exports = model('Chat', ChatSchema);
+module.exports = mongoose.model('Chat', chatSchema);

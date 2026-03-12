@@ -3,6 +3,7 @@ const messageRepo = require('../db/messageRepository');
 const deletedChatRepo = require('../db/deletedChatRepository');
 const connectionRepo = require('../db/connectionRepository');
 const blockRepo = require('../db/blockRepository');
+const blockedWords = require('../services/blockedWords');
 const { getIo } = require('../ioHolder');
 const { getOrCreatePrivateChat } = require('../services/chatService');
 
@@ -17,7 +18,7 @@ const toMessageResponse = (row) => ({
   status: row.status,
   ephemeral: row.ephemeral_mode ? { mode: row.ephemeral_mode } : null,
   expireAt: row.expire_at,
-  createdAt: row.created_at,
+  createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
 });
 
 exports.startChat = async (req, res) => {
@@ -103,7 +104,7 @@ exports.getMessages = async (req, res) => {
       if (isBlocked) return res.status(403).json({ message: 'Cannot access chat with blocked user' });
     }
 
-    const messages = await messageRepo.findByChat(chatId, { limit, before });
+    const messages = await messageRepo.findByChat(chatId, { limit, before, excludeForUserId: req.user.id });
     return res.json(messages.map(toMessageResponse));
   } catch (err) {
     console.error(err);
@@ -135,6 +136,11 @@ exports.sendMessage = async (req, res) => {
 
     const recipientId = to || members.find((m) => m.id !== req.user.id)?.id;
     if (!recipientId) return res.status(400).json({ message: 'Recipient not found' });
+
+    if ((type || 'text') === 'text' && content) {
+      const msgError = blockedWords.validateMessageContent(content);
+      if (msgError) return res.status(400).json({ message: msgError });
+    }
 
     const message = await messageRepo.create({
       chatId,

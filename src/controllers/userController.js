@@ -85,6 +85,33 @@ exports.registerDeviceToken = async (req, res) => {
   }
 };
 
+exports.removeDeviceToken = async (req, res) => {
+  try {
+    await deviceTokenRepo.removeAllForUser(req.user.id);
+    return res.json({ message: 'Device tokens removed' });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.updateNotificationsEnabled = async (req, res) => {
+  const { enabled } = req.body;
+  if (typeof enabled !== 'boolean') {
+    return res.status(400).json({ message: 'enabled (boolean) required' });
+  }
+  try {
+    await userRepo.updateNotificationsEnabled(req.user.id, enabled);
+    if (!enabled) {
+      await deviceTokenRepo.removeAllForUser(req.user.id);
+    }
+    return res.json({ message: enabled ? 'Notifications enabled' : 'Notifications disabled' });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
 exports.getByUid = async (req, res) => {
   const { uid } = req.params;
   const user = await userRepo.findByUid(uid);
@@ -95,4 +122,38 @@ exports.getByUid = async (req, res) => {
     displayName: user.display_name,
     avatar: user.avatar || '👤',
   });
+};
+
+exports.changePassword = async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ message: 'currentPassword and newPassword required' });
+  }
+  if (newPassword.length < 6) {
+    return res.status(400).json({ message: 'New password must be at least 6 characters' });
+  }
+  try {
+    const user = await userRepo.findById(req.user.id, false);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    const match = await userRepo.comparePassword(currentPassword, user.password);
+    if (!match) return res.status(401).json({ message: 'Current password is incorrect' });
+    const bcrypt = require('bcryptjs');
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await userRepo.updatePassword(req.user.id, hashedPassword);
+    return res.json({ message: 'Password changed successfully' });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.deleteAccount = async (req, res) => {
+  try {
+    const ok = await userRepo.deactivateUser(req.user.id);
+    if (!ok) return res.status(404).json({ message: 'User not found' });
+    return res.json({ message: 'Account deactivated successfully' });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error' });
+  }
 };

@@ -5,26 +5,45 @@ const findById = async (id) => {
   return res.rows[0] || null;
 };
 
-const findByChat = async (chatId, { limit = 50, before } = {}) => {
-  let sql = 'SELECT * FROM messages WHERE chat_id = $1';
-  const params = [chatId];
+const findByChat = async (chatId, { limit = 50, before, excludeForUserId } = {}) => {
+  const params = [];
+  let paramIdx = 1;
+
+  let sql = 'SELECT m.* FROM messages m WHERE m.chat_id = $' + paramIdx++;
+  params.push(chatId);
+
+  if (excludeForUserId) {
+    sql += ' AND NOT EXISTS (SELECT 1 FROM message_deleted_for d WHERE d.message_id = m.id AND d.user_id = $' + paramIdx + ')';
+    params.push(excludeForUserId);
+    paramIdx++;
+  }
 
   if (before) {
     const date = new Date(before);
     if (!isNaN(date.getTime())) {
-      sql += ' AND created_at < $2 ORDER BY created_at DESC LIMIT $3';
+      sql += ' AND m.created_at < $' + paramIdx + ' ORDER BY m.created_at DESC LIMIT $' + (paramIdx + 1);
       params.push(date.toISOString(), limit);
     } else {
-      sql += ' AND id < $2::uuid ORDER BY created_at DESC LIMIT $3';
+      sql += ' AND m.id < $' + paramIdx + '::uuid ORDER BY m.created_at DESC LIMIT $' + (paramIdx + 1);
       params.push(before, limit);
     }
   } else {
-    sql += ' ORDER BY created_at DESC LIMIT $2';
+    sql += ' ORDER BY m.created_at DESC LIMIT $' + paramIdx;
     params.push(limit);
   }
 
   const res = await query(sql, params);
   return res.rows.reverse();
+};
+
+const markDeletedForUserInChat = async (userId, chatId) => {
+  await query(
+    `INSERT INTO message_deleted_for (user_id, message_id)
+     SELECT $1, id FROM messages
+     WHERE chat_id = $2 AND ephemeral_mode = 'viewOnce'
+     ON CONFLICT (user_id, message_id) DO NOTHING`,
+    [userId, chatId]
+  );
 };
 
 const getLastMessage = async (chatId) => {
@@ -99,4 +118,5 @@ module.exports = {
   deleteByChatId,
   deleteExpired,
   deleteByEphemeralMode,
+  markDeletedForUserInChat,
 };

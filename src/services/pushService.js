@@ -34,22 +34,32 @@ function init() {
 
 async function sendToUser(userId, { title, body, data = {} }) {
   const deviceTokenRepo = require('../db/deviceTokenRepository');
+  const userRepo = require('../db/userRepository');
+  const enabled = await userRepo.getNotificationsEnabled(userId);
+  if (!enabled) return;
   const tokens = await deviceTokenRepo.findByUserId(userId);
   if (!tokens || tokens.length === 0) return;
   if (!admin && !init()) return;
 
+  const dataPayload = {
+    ...Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])),
+    title,
+    body,
+  };
+
   const messages = tokens.map((t) => ({
     token: t.fcm_token,
-    notification: { title, body },
-    data: Object.fromEntries(
-      Object.entries(data).map(([k, v]) => [k, String(v)])
-    ),
+    data: dataPayload,
     android: {
       priority: 'high',
-      notification: { channelId: 'default', sound: 'default' },
     },
     apns: {
-      payload: { aps: { sound: 'default' } },
+      payload: {
+        aps: {
+          alert: { title, body },
+          sound: 'default',
+        },
+      },
       fcmOptions: {},
     },
   }));
@@ -67,9 +77,10 @@ async function sendToUser(userId, { title, body, data = {} }) {
 }
 
 async function notifyNewMessage({ toUserId, fromUserId, fromName, chatId, preview }) {
+  const displayName = fromName || 'Someone';
   await sendToUser(toUserId, {
-    title: fromName || 'New message',
-    body: preview || 'You have a new message',
+    title: `From: ${displayName}`,
+    body: preview || 'New message',
     data: {
       type: 'message',
       chatId: String(chatId),
@@ -80,9 +91,10 @@ async function notifyNewMessage({ toUserId, fromUserId, fromName, chatId, previe
 }
 
 async function notifyFriendRequest({ toUserId, fromName, requestId }) {
+  const displayName = fromName || 'Someone';
   await sendToUser(toUserId, {
     title: 'Friend Request',
-    body: `${fromName || 'Someone'} wants to connect`,
+    body: `From: ${displayName} - wants to connect`,
     data: { type: 'friend_request', requestId: String(requestId) },
   });
 }
