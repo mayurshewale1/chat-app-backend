@@ -49,9 +49,11 @@ async function sendToUser(userId, { title, body, data = {} }) {
 
   const messages = tokens.map((t) => ({
     token: t.fcm_token,
+    notification: { title, body },
     data: dataPayload,
     android: {
       priority: 'high',
+      notification: { channelId: 'default', sound: 'default' },
     },
     apns: {
       payload: {
