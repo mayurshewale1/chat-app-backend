@@ -89,11 +89,15 @@ async function sendOtp(mobile) {
   const otp = generateOtp();
   storeOtp(mobile, otp);
 
+  const authKey = process.env.MSG91_AUTH_KEY;
   const sent = await sendSms(mobile, otp);
   if (!sent) {
     return { success: false, message: 'Failed to send OTP. Try again.' };
   }
-  return { success: true, message: 'OTP sent to your mobile' };
+  // Dev mode: no SMS provider - return OTP so client can show it for testing
+  const result = { success: true, message: authKey ? 'OTP sent to your mobile' : 'OTP sent (dev mode)' };
+  if (!authKey) result.otp = otp;
+  return result;
 }
 
 module.exports = {

@@ -33,7 +33,9 @@ exports.sendOtp = async (req, res) => {
   if (!result.success) {
     return res.status(400).json({ message: result.message });
   }
-  return res.json({ message: result.message });
+  const payload = { message: result.message };
+  if (result.otp) payload.otp = result.otp; // Dev mode only - client can show for testing
+  return res.json(payload);
 };
 
 exports.register = async (req, res) => {
