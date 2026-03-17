@@ -12,7 +12,7 @@ if (!JWT_SECRET && NODE_ENV === 'production') {
   require('./utils/logger').error('FATAL: JWT_SECRET must be set in production');
   process.exit(1);
 }
-const ACCESS_TOKEN_EXPIRES_IN = process.env.ACCESS_TOKEN_EXPIRES_IN || '15m';
+const ACCESS_TOKEN_EXPIRES_IN = process.env.ACCESS_TOKEN_EXPIRES_IN || 'never';
 const REFRESH_TOKEN_EXPIRES_IN = process.env.REFRESH_TOKEN_EXPIRES_IN || '7d';
 const LOG_LEVEL = process.env.LOG_LEVEL || 'info';
 

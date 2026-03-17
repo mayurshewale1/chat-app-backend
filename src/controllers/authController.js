@@ -8,7 +8,10 @@ const otpService = require('../services/otpService');
 
 const signToken = (userId) => {
   if (process.env.NODE_ENV === 'test') return `testtoken-${userId}`;
-  return jwt.sign({ sub: userId }, config.JWT_SECRET, { expiresIn: config.ACCESS_TOKEN_EXPIRES_IN });
+  const opts = {};
+  const expiry = (config.ACCESS_TOKEN_EXPIRES_IN || '').toLowerCase();
+  if (expiry && expiry !== 'never') opts.expiresIn = config.ACCESS_TOKEN_EXPIRES_IN;
+  return jwt.sign({ sub: userId }, config.JWT_SECRET, opts);
 };
 
 const toUserResponse = (row) => ({
@@ -33,9 +36,7 @@ exports.sendOtp = async (req, res) => {
   if (!result.success) {
     return res.status(400).json({ message: result.message });
   }
-  const payload = { message: result.message };
-  if (result.otp) payload.otp = result.otp; // Dev mode only - client can show for testing
-  return res.json(payload);
+  return res.json({ message: result.message });
 };
 
 exports.register = async (req, res) => {
