@@ -61,7 +61,8 @@ exports.listChats = async (req, res) => {
       const isBlocked = await blockRepo.isBlocked(req.user.id, other.id) || await blockRepo.isBlocked(other.id, req.user.id);
       if (isBlocked) continue;
 
-      const lastMessage = await messageRepo.getLastMessage(c.id);
+      const lastMessage = await messageRepo.getLastMessageForUser(c.id, req.user.id);
+      const unreadCount = await messageRepo.countUnreadForUser(c.id, req.user.id);
       result.push({
         chat: {
           id: c.id,
@@ -73,6 +74,7 @@ exports.listChats = async (req, res) => {
         otherId: other?.id,
         otherUser: other ? { uid: other.uid, username: other.username, displayName: other.display_name, avatar: other.avatar || '👤', lastSeen: other.last_seen } : null,
         lastMessage: lastMessage ? toMessageResponse(lastMessage) : null,
+        unreadCount,
       });
     }
     return res.json(result);

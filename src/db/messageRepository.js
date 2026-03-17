@@ -54,6 +54,28 @@ const getLastMessage = async (chatId) => {
   return res.rows[0] || null;
 };
 
+/** Last message excluding those "deleted for" user (e.g. viewOnce after viewing). Matches what user sees in chat. */
+const getLastMessageForUser = async (chatId, userId) => {
+  const res = await query(
+    `SELECT m.* FROM messages m
+     WHERE m.chat_id = $1
+     AND NOT EXISTS (SELECT 1 FROM message_deleted_for d WHERE d.message_id = m.id AND d.user_id = $2)
+     ORDER BY m.created_at DESC LIMIT 1`,
+    [chatId, userId]
+  );
+  return res.rows[0] || null;
+};
+
+const countUnreadForUser = async (chatId, userId) => {
+  const res = await query(
+    `SELECT COUNT(*)::int AS count FROM messages m
+     WHERE m.chat_id = $1 AND m.to_user_id = $2 AND m.status != 'read'
+     AND NOT EXISTS (SELECT 1 FROM message_deleted_for d WHERE d.message_id = m.id AND d.user_id = $2)`,
+    [chatId, userId]
+  );
+  return res.rows[0]?.count ?? 0;
+};
+
 const create = async ({ chatId, fromUserId, toUserId, content, type, ephemeral, expireAt }) => {
   const res = await query(
     `INSERT INTO messages (chat_id, from_user_id, to_user_id, content, type, ephemeral_mode, expire_at)
@@ -111,6 +133,8 @@ module.exports = {
   findById,
   findByChat,
   getLastMessage,
+  getLastMessageForUser,
+  countUnreadForUser,
   create,
   updateStatus,
   setExpireAtAndStatus,
