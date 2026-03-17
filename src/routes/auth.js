@@ -3,6 +3,7 @@ const {
   login,
   register,
   checkUsernameAvailability,
+  sendOtp,
   forgotPasswordRequest,
   resetPassword,
 } = require('../controllers/authController');
@@ -10,6 +11,7 @@ const {
 const router = Router();
 
 router.get('/check-username/:username', checkUsernameAvailability);
+router.post('/send-otp', sendOtp);
 router.post('/register', register);
 router.post('/login', login);
 router.post('/forgot-password', forgotPasswordRequest);

@@ -4,6 +4,7 @@ const config = require('../config');
 const userRepo = require('../db/userRepository');
 const firebaseAuth = require('../services/firebaseAuth');
 const blockedWords = require('../services/blockedWords');
+const otpService = require('../services/otpService');
 
 const signToken = (userId) => {
   if (process.env.NODE_ENV === 'test') return `testtoken-${userId}`;
@@ -21,16 +22,47 @@ const toUserResponse = (row) => ({
   createdAt: row.created_at,
 });
 
+exports.sendOtp = async (req, res) => {
+  const { mobile } = req.body;
+  if (!mobile) return res.status(400).json({ message: 'mobile required' });
+
+  const cleaned = String(mobile).replace(/\D/g, '');
+  if (cleaned.length < 10) return res.status(400).json({ message: 'Enter a valid 10-digit mobile number' });
+
+  const result = await otpService.sendOtp(mobile);
+  if (!result.success) {
+    return res.status(400).json({ message: result.message });
+  }
+  return res.json({ message: result.message });
+};
+
 exports.register = async (req, res) => {
-  const { username, password, displayName, firebaseIdToken } = req.body;
-  if (!username || !password || !firebaseIdToken) {
-    return res.status(400).json({ message: 'username, password and firebaseIdToken required' });
+  const { username, password, displayName, mobile, otp, firebaseIdToken } = req.body;
+
+  let normalizedMobile;
+  if (mobile && otp) {
+    // New flow: backend OTP (no browser redirect)
+    if (!username || !password) {
+      return res.status(400).json({ message: 'username and password required' });
+    }
+    const cleaned = String(mobile).replace(/\D/g, '');
+    if (cleaned.length < 10) return res.status(400).json({ message: 'Invalid mobile number' });
+    if (!otpService.verifyOtp(mobile, otp)) {
+      return res.status(400).json({ message: 'Invalid or expired OTP. Please request a new one.' });
+    }
+    normalizedMobile = cleaned.slice(-10);
+  } else if (firebaseIdToken) {
+    // Legacy flow: Firebase Phone Auth (with reCAPTCHA)
+    if (!username || !password) {
+      return res.status(400).json({ message: 'username, password and firebaseIdToken required' });
+    }
+    const verified = await firebaseAuth.verifyPhoneToken(firebaseIdToken);
+    if (!verified) return res.status(400).json({ message: 'Invalid or expired phone verification. Please verify your mobile again.' });
+    normalizedMobile = firebaseAuth.normalizePhone(verified.phoneNumber);
+  } else {
+    return res.status(400).json({ message: 'Provide (mobile + otp) or firebaseIdToken for verification' });
   }
 
-  const verified = await firebaseAuth.verifyPhoneToken(firebaseIdToken);
-  if (!verified) return res.status(400).json({ message: 'Invalid or expired phone verification. Please verify your mobile again.' });
-
-  const normalizedMobile = firebaseAuth.normalizePhone(verified.phoneNumber);
   if (normalizedMobile.length < 10) return res.status(400).json({ message: 'Invalid mobile number' });
 
   const normalizedUsername = String(username).trim().toLowerCase();
@@ -101,16 +133,30 @@ exports.forgotPasswordRequest = async (req, res) => {
 };
 
 exports.resetPassword = async (req, res) => {
-  const { firebaseIdToken, newPassword } = req.body;
-  if (!firebaseIdToken || !newPassword) {
-    return res.status(400).json({ message: 'firebaseIdToken and newPassword required' });
+  const { mobile, otp, newPassword, firebaseIdToken } = req.body;
+
+  let normalizedMobile;
+  if (mobile && otp) {
+    // New flow: backend OTP (no browser redirect)
+    if (!newPassword) return res.status(400).json({ message: 'newPassword required' });
+    const cleaned = String(mobile).replace(/\D/g, '');
+    if (cleaned.length < 10) return res.status(400).json({ message: 'Invalid mobile number' });
+    if (!otpService.verifyOtp(mobile, otp)) {
+      return res.status(400).json({ message: 'Invalid or expired OTP. Please request a new one.' });
+    }
+    normalizedMobile = cleaned.slice(-10);
+  } else if (firebaseIdToken) {
+    // Legacy flow: Firebase
+    if (!newPassword) return res.status(400).json({ message: 'firebaseIdToken and newPassword required' });
+    const verified = await firebaseAuth.verifyPhoneToken(firebaseIdToken);
+    if (!verified) return res.status(400).json({ message: 'Invalid or expired phone verification. Please verify your mobile again.' });
+    normalizedMobile = firebaseAuth.normalizePhone(verified.phoneNumber);
+  } else {
+    return res.status(400).json({ message: 'Provide (mobile + otp) or firebaseIdToken for verification' });
   }
+
   if (newPassword.length < 6) return res.status(400).json({ message: 'Password must be at least 6 characters' });
 
-  const verified = await firebaseAuth.verifyPhoneToken(firebaseIdToken);
-  if (!verified) return res.status(400).json({ message: 'Invalid or expired phone verification. Please verify your mobile again.' });
-
-  const normalizedMobile = firebaseAuth.normalizePhone(verified.phoneNumber);
   const user = await userRepo.findByMobile(normalizedMobile);
   if (!user) return res.status(404).json({ message: 'No account found with this mobile number' });
 
