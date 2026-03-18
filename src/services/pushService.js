@@ -60,6 +60,7 @@ async function sendToUser(userId, { title, body, data = {} }) {
         aps: {
           alert: { title, body },
           sound: 'default',
+          category: data?.type === 'call' ? 'CALL' : undefined,
         },
       },
       fcmOptions: {},
@@ -101,11 +102,17 @@ async function notifyFriendRequest({ toUserId, fromName, requestId }) {
   });
 }
 
-async function notifyIncomingCall({ toUserId, fromName, isVideo }) {
+async function notifyIncomingCall({ toUserId, fromUserId, fromName, isVideo, callId }) {
   await sendToUser(toUserId, {
     title: 'Incoming Call',
     body: `${fromName || 'Someone'} is ${isVideo ? 'video' : 'voice'} calling...`,
-    data: { type: 'call', isVideo: isVideo ? 'true' : 'false' },
+    data: {
+      type: 'call',
+      callId: callId ? String(callId) : '',
+      fromUserId: fromUserId ? String(fromUserId) : '',
+      fromName: fromName || '',
+      isVideo: isVideo ? 'true' : 'false',
+    },
   });
 }
 

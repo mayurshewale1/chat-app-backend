@@ -125,6 +125,22 @@ const getNotificationsEnabled = async (userId) => {
   return res.rows[0]?.enabled !== false;
 };
 
+const updateReadReceiptsEnabled = async (userId, enabled) => {
+  const res = await query(
+    'UPDATE users SET read_receipts_enabled = $1 WHERE id = $2 RETURNING id',
+    [!!enabled, userId]
+  );
+  return res.rowCount > 0;
+};
+
+const getReadReceiptsEnabled = async (userId) => {
+  const res = await query(
+    'SELECT COALESCE(read_receipts_enabled, true) AS enabled FROM users WHERE id = $1',
+    [userId]
+  );
+  return res.rows[0]?.enabled !== false;
+};
+
 module.exports = {
   findByUsername,
   findByUid,
@@ -140,4 +156,6 @@ module.exports = {
   updatePassword,
   updateNotificationsEnabled,
   getNotificationsEnabled,
+  updateReadReceiptsEnabled,
+  getReadReceiptsEnabled,
 };

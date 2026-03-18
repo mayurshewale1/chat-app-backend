@@ -112,6 +112,20 @@ exports.updateNotificationsEnabled = async (req, res) => {
   }
 };
 
+exports.updateReadReceiptsEnabled = async (req, res) => {
+  const { enabled } = req.body;
+  if (typeof enabled !== 'boolean') {
+    return res.status(400).json({ message: 'enabled (boolean) required' });
+  }
+  try {
+    await userRepo.updateReadReceiptsEnabled(req.user.id, enabled);
+    return res.json({ message: enabled ? 'Read receipts enabled' : 'Read receipts disabled' });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
 exports.getByUid = async (req, res) => {
   const { uid } = req.params;
   const user = await userRepo.findByUid(uid);

@@ -187,20 +187,21 @@ function initSockets(io) {
         const m = await messageRepo.findById(messageId);
         if (!m) return;
         if (m.to_user_id !== user.id) return;
+        const receiptsEnabled = await userRepo.getReadReceiptsEnabled(user.id);
         if (m.ephemeral_mode === 'viewOnce') {
           await messageRepo.updateStatus(messageId, 'read');
-          io.to(`user:${m.from_user_id}`).emit('message:status', { messageId, status: 'read' });
+          io.to(`user:${m.from_user_id}`).emit('message:status', { messageId, status: receiptsEnabled ? 'read' : 'delivered' });
         } else if (m.ephemeral_mode === '24h') {
           const expireAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
           await messageRepo.setExpireAtAndStatus(messageId, expireAt, 'read');
-          io.to(`user:${m.from_user_id}`).emit('message:status', { messageId, status: 'read' });
+          io.to(`user:${m.from_user_id}`).emit('message:status', { messageId, status: receiptsEnabled ? 'read' : 'delivered' });
         } else if (m.ephemeral_mode === '7d') {
           const expireAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
           await messageRepo.setExpireAtAndStatus(messageId, expireAt, 'read');
-          io.to(`user:${m.from_user_id}`).emit('message:status', { messageId, status: 'read' });
+          io.to(`user:${m.from_user_id}`).emit('message:status', { messageId, status: receiptsEnabled ? 'read' : 'delivered' });
         } else {
           await messageRepo.updateStatus(messageId, 'read');
-          io.to(`user:${m.from_user_id}`).emit('message:status', { messageId, status: 'read' });
+          io.to(`user:${m.from_user_id}`).emit('message:status', { messageId, status: receiptsEnabled ? 'read' : 'delivered' });
         }
       } catch (err) {
         logger.warn(err);
@@ -215,7 +216,7 @@ function initSockets(io) {
           io.to(`user:${user.id}`).emit('call:rejected', { from: to, reason: 'blocked' });
           return;
         }
-        await callHistoryRepo.create({
+        const callRec = await callHistoryRepo.create({
           callerId: user.id,
           calleeId: to,
           callType: isVideo ? 'video' : 'voice',
@@ -235,8 +236,10 @@ function initSockets(io) {
         // Push notification for incoming call (when app is backgrounded or killed)
         pushService.notifyIncomingCall({
           toUserId: to,
+          fromUserId: user.id,
           fromName: callerInfo?.displayName || callerInfo?.username || 'Someone',
           isVideo: !!isVideo,
+          callId: callRec?.id,
         }).catch(() => {});
       } catch (err) {
         logger.warn('call:offer error', err);

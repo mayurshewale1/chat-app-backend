@@ -107,7 +107,27 @@ exports.getMessages = async (req, res) => {
     }
 
     const messages = await messageRepo.findByChat(chatId, { limit, before, excludeForUserId: req.user.id });
-    return res.json(messages.map(toMessageResponse));
+
+    // Mask read status for messages where the recipient has read receipts disabled.
+    // If current user is the sender, and the receiver has receipts off, treat "read" as "delivered".
+    const receiptsCache = new Map();
+    const masked = [];
+    for (const row of messages) {
+      let out = toMessageResponse(row);
+      if (row.status === 'read' && String(row.from_user_id) === String(req.user.id)) {
+        const recipientId = row.to_user_id;
+        if (!receiptsCache.has(recipientId)) {
+          const enabled = await userRepo.getReadReceiptsEnabled(recipientId);
+          receiptsCache.set(recipientId, enabled);
+        }
+        if (receiptsCache.get(recipientId) === false) {
+          out = { ...out, status: 'delivered' };
+        }
+      }
+      masked.push(out);
+    }
+
+    return res.json(masked);
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error' });
