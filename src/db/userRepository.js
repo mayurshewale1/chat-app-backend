@@ -14,7 +14,9 @@ const findByUid = async (uid) => {
 };
 
 const findById = async (id, excludePassword = true) => {
-  const cols = excludePassword ? 'id, uid, username, display_name, avatar, app_logo, recovery_email, mobile, last_seen, subscription_expires_at, created_at' : '*';
+  const cols = excludePassword
+    ? 'id, uid, username, display_name, avatar, app_logo, recovery_email, mobile, last_seen, subscription_expires_at, created_at, privacy_mask_caller, security_question'
+    : '*';
   const res = await query(`SELECT ${cols} FROM users WHERE id = $1`, [id]);
   return res.rows[0] || null;
 };
@@ -141,6 +143,49 @@ const getReadReceiptsEnabled = async (userId) => {
   return res.rows[0]?.enabled !== false;
 };
 
+const setSecurityQuestion = async (userId, question, answerPlain) => {
+  const q = String(question || '').trim().slice(0, 255);
+  if (!q) {
+    const err = new Error('Security question is required');
+    err.status = 400;
+    throw err;
+  }
+  const a = String(answerPlain || '').trim();
+  if (a.length < 2) {
+    const err = new Error('Answer must be at least 2 characters');
+    err.status = 400;
+    throw err;
+  }
+  const hash = await bcrypt.hash(a.toLowerCase(), 10);
+  await query('UPDATE users SET security_question = $1, security_answer_hash = $2 WHERE id = $3', [q, hash, userId]);
+};
+
+const verifySecurityAnswer = async (userId, answerPlain) => {
+  const res = await query('SELECT security_answer_hash FROM users WHERE id = $1', [userId]);
+  const row = res.rows[0];
+  if (!row?.security_answer_hash) return false;
+  return bcrypt.compare(String(answerPlain || '').trim().toLowerCase(), row.security_answer_hash);
+};
+
+const hasSecurityQuestion = async (userId) => {
+  const res = await query(
+    'SELECT security_answer_hash FROM users WHERE id = $1',
+    [userId]
+  );
+  return !!(res.rows[0]?.security_answer_hash);
+};
+
+const updatePrivacyMaskCaller = async (userId, enabled) => {
+  const res = await query('UPDATE users SET privacy_mask_caller = $1 WHERE id = $2 RETURNING id', [!!enabled, userId]);
+  return res.rowCount > 0;
+};
+
+/** Permanent account removal — DB cascades related rows. */
+const deleteUserPermanently = async (userId) => {
+  const res = await query('DELETE FROM users WHERE id = $1 RETURNING id', [userId]);
+  return res.rowCount > 0;
+};
+
 module.exports = {
   findByUsername,
   findByUid,
@@ -158,4 +203,9 @@ module.exports = {
   getNotificationsEnabled,
   updateReadReceiptsEnabled,
   getReadReceiptsEnabled,
+  setSecurityQuestion,
+  verifySecurityAnswer,
+  hasSecurityQuestion,
+  updatePrivacyMaskCaller,
+  deleteUserPermanently,
 };

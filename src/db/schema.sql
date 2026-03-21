@@ -59,7 +59,8 @@ CREATE TABLE IF NOT EXISTS messages (
   status VARCHAR(20) DEFAULT 'sent' CHECK (status IN ('sent', 'delivered', 'read')),
   ephemeral_mode VARCHAR(20) CHECK (ephemeral_mode IN ('24h', '7d', 'viewOnce', 'deleteOnExit')),
   expire_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  deleted_for_everyone BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 CREATE INDEX IF NOT EXISTS idx_messages_chat ON messages(chat_id);
@@ -100,6 +101,7 @@ CREATE TABLE IF NOT EXISTS call_history (
   callee_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   call_type VARCHAR(10) NOT NULL CHECK (call_type IN ('voice', 'video')),
   status VARCHAR(20) NOT NULL DEFAULT 'ringing' CHECK (status IN ('ringing', 'completed', 'missed', 'rejected', 'cancelled')),
+  duration_seconds INTEGER,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -145,3 +147,6 @@ CREATE TABLE IF NOT EXISTS blocks (
 );
 CREATE INDEX IF NOT EXISTS idx_blocks_blocker ON blocks(blocker_id);
 CREATE INDEX IF NOT EXISTS idx_blocks_blocked ON blocks(blocked_id);
+
+-- See migrations/add_request_history_security_privacy_archive.sql for:
+-- connection_history_hidden, chat_archives, users.security_question, security_answer_hash, privacy_mask_caller

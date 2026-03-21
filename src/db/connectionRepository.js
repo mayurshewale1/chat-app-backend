@@ -82,6 +82,62 @@ const removeBetweenUsers = async (userId, otherUserId) => {
   return res.rowCount > 0;
 };
 
+const listHistoryReceived = async (userId) => {
+  const res = await query(
+    `SELECT c.id, c.from_user_id, c.to_user_id, c.status, c.created_at,
+            u.uid, u.username, u.display_name, u.avatar
+     FROM connections c
+     JOIN users u ON u.id = c.from_user_id
+     WHERE c.to_user_id = $1
+       AND NOT EXISTS (
+         SELECT 1 FROM connection_history_hidden h
+         WHERE h.user_id = $1 AND h.connection_id = c.id
+       )
+     ORDER BY c.created_at DESC`,
+    [userId]
+  );
+  return res.rows;
+};
+
+const listHistorySent = async (userId) => {
+  const res = await query(
+    `SELECT c.id, c.from_user_id, c.to_user_id, c.status, c.created_at,
+            u.uid, u.username, u.display_name, u.avatar
+     FROM connections c
+     JOIN users u ON u.id = c.to_user_id
+     WHERE c.from_user_id = $1
+       AND NOT EXISTS (
+         SELECT 1 FROM connection_history_hidden h
+         WHERE h.user_id = $1 AND h.connection_id = c.id
+       )
+     ORDER BY c.created_at DESC`,
+    [userId]
+  );
+  return res.rows;
+};
+
+const hideFromHistory = async (userId, connectionId) => {
+  const res = await query(
+    `INSERT INTO connection_history_hidden (user_id, connection_id) VALUES ($1, $2)
+     ON CONFLICT (user_id, connection_id) DO NOTHING
+     RETURNING connection_id`,
+    [userId, connectionId]
+  );
+  return res.rowCount > 0;
+};
+
+/** Delete row if pending/rejected; caller must authorize. */
+const deleteByIdIfNotAccepted = async (connectionId, userId) => {
+  const res = await query(
+    `DELETE FROM connections
+     WHERE id = $1 AND status IN ('pending', 'rejected')
+       AND (from_user_id = $2 OR to_user_id = $2)
+     RETURNING id`,
+    [connectionId, userId]
+  );
+  return res.rowCount > 0;
+};
+
 module.exports = {
   findById,
   findByFromTo,
@@ -91,4 +147,8 @@ module.exports = {
   listPendingRequestsReceived,
   listPendingRequestsSent,
   removeBetweenUsers,
+  listHistoryReceived,
+  listHistorySent,
+  hideFromHistory,
+  deleteByIdIfNotAccepted,
 };

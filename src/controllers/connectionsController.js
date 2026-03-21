@@ -269,3 +269,57 @@ exports.listBlocked = async (req, res) => {
     return res.status(500).json({ message: 'Server error' });
   }
 };
+
+const mapHistoryRow = (r, direction) => ({
+  id: r.id,
+  direction,
+  status: r.status,
+  createdAt: r.created_at,
+  otherUserId: direction === 'received' ? r.from_user_id : r.to_user_id,
+  uid: r.uid,
+  username: r.username,
+  displayName: r.display_name,
+  avatar: r.avatar || '👤',
+});
+
+/** Full request history (sent + received), excluding rows hidden by swipe-delete. */
+exports.listRequestHistory = async (req, res) => {
+  try {
+    const [receivedRows, sentRows] = await Promise.all([
+      connectionRepo.listHistoryReceived(req.user.id),
+      connectionRepo.listHistorySent(req.user.id),
+    ]);
+    return res.json({
+      received: receivedRows.map((r) => mapHistoryRow(r, 'received')),
+      sent: sentRows.map((r) => mapHistoryRow(r, 'sent')),
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+/**
+ * Remove from history: pending/rejected → delete row; accepted → hide for this user only.
+ */
+exports.removeRequestHistoryItem = async (req, res) => {
+  const { id } = req.params;
+  if (!id) return res.status(400).json({ message: 'id required' });
+  try {
+    const row = await connectionRepo.findById(id);
+    if (!row) return res.status(404).json({ message: 'Not found' });
+    const isParticipant = row.from_user_id === req.user.id || row.to_user_id === req.user.id;
+    if (!isParticipant) return res.status(403).json({ message: 'Not authorized' });
+
+    if (row.status === 'accepted') {
+      await connectionRepo.hideFromHistory(req.user.id, id);
+      return res.json({ message: 'Removed from history' });
+    }
+    const deleted = await connectionRepo.deleteByIdIfNotAccepted(id, req.user.id);
+    if (!deleted) return res.status(400).json({ message: 'Could not remove this request' });
+    return res.json({ message: 'Deleted' });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};

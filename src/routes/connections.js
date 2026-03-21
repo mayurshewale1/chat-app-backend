@@ -8,9 +8,11 @@ const {
   listConnections,
   listMyCodes,
   listPendingRequests,
+  listRequestHistory,
   listSentRequests,
   rejectRequest,
   removeConnection,
+  removeRequestHistoryItem,
   sendRequest,
   unblockUser,
 } = require('../controllers/connectionsController');
@@ -26,6 +28,8 @@ router.post('/generate-code', authJwt, generateConnectionCode);
 router.get('/my-codes', authJwt, listMyCodes);
 router.get('/requests', authJwt, listPendingRequests);
 router.get('/sent', authJwt, listSentRequests);
+router.get('/history', authJwt, listRequestHistory);
+router.delete('/history/:id', authJwt, removeRequestHistoryItem);
 router.get('/', authJwt, listConnections);
 router.post('/remove', authJwt, removeConnection);
 router.post('/block', authJwt, blockUser);

@@ -114,6 +114,25 @@ const deleteById = async (id) => {
   await query('DELETE FROM messages WHERE id = $1', [id]);
 };
 
+/** Hide message only for this user (still exists for the other party). */
+const markDeletedForMe = async (userId, messageId) => {
+  await query(
+    `INSERT INTO message_deleted_for (user_id, message_id) VALUES ($1, $2)
+     ON CONFLICT (user_id, message_id) DO NOTHING`,
+    [userId, messageId]
+  );
+};
+
+/** Soft-delete for all participants: strip content, flag row (WhatsApp-style). */
+const markDeletedForEveryone = async (id) => {
+  const res = await query(
+    `UPDATE messages SET deleted_for_everyone = true, content = NULL, type = 'text'
+     WHERE id = $1 RETURNING *`,
+    [id]
+  );
+  return res.rows[0] || null;
+};
+
 const deleteByChatId = async (chatId) => {
   await query('DELETE FROM messages WHERE chat_id = $1', [chatId]);
 };
@@ -129,6 +148,26 @@ const deleteByEphemeralMode = async (mode, toUserId) => {
   );
 };
 
+/** Chats where message content contains search substring (user's visible messages only) */
+const searchChatIdsByContent = async (userId, searchText) => {
+  const raw = searchText && String(searchText).trim();
+  if (!raw) return [];
+  const res = await query(
+    `SELECT DISTINCT m.chat_id
+     FROM messages m
+     JOIN chat_members cm ON cm.chat_id = m.chat_id AND cm.user_id = $1
+     WHERE m.content IS NOT NULL
+     AND COALESCE(m.deleted_for_everyone, false) = false
+     AND strpos(lower(m.content), lower($2::text)) > 0
+     AND NOT EXISTS (
+       SELECT 1 FROM message_deleted_for d
+       WHERE d.message_id = m.id AND d.user_id = $1
+     )`,
+    [userId, raw]
+  );
+  return res.rows.map((r) => r.chat_id);
+};
+
 module.exports = {
   findById,
   findByChat,
@@ -139,8 +178,11 @@ module.exports = {
   updateStatus,
   setExpireAtAndStatus,
   deleteById,
+  markDeletedForMe,
+  markDeletedForEveryone,
   deleteByChatId,
   deleteExpired,
   deleteByEphemeralMode,
   markDeletedForUserInChat,
+  searchChatIdsByContent,
 };

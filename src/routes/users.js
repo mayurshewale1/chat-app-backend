@@ -1,5 +1,20 @@
 const { Router } = require('express');
-const { getByUid, getMe, updateProfile, uploadAvatar, uploadAppLogo, registerDeviceToken, removeDeviceToken, updateNotificationsEnabled, updateReadReceiptsEnabled, deleteAccount, changePassword } = require('../controllers/userController');
+const {
+  getByUid,
+  getMe,
+  updateProfile,
+  uploadAvatar,
+  uploadAppLogo,
+  registerDeviceToken,
+  removeDeviceToken,
+  updateNotificationsEnabled,
+  updateReadReceiptsEnabled,
+  deleteAccount,
+  changePassword,
+  setSecurityQuestion,
+  setPrivacyMaskCaller,
+  verifyPinReset,
+} = require('../controllers/userController');
 const { authJwt } = require('../middlewares/authJwt');
 const uploadAvatarMiddleware = require('../middlewares/uploadAvatar');
 const uploadAppLogoMiddleware = require('../middlewares/uploadAppLogo');
@@ -12,6 +27,9 @@ router.delete('/device-token', authJwt, removeDeviceToken);
 router.patch('/me/notifications', authJwt, updateNotificationsEnabled);
 router.patch('/me/read-receipts', authJwt, updateReadReceiptsEnabled);
 router.patch('/me/password', authJwt, changePassword);
+router.patch('/me/security-question', authJwt, setSecurityQuestion);
+router.patch('/me/privacy-caller', authJwt, setPrivacyMaskCaller);
+router.post('/me/pin-reset-verify', authJwt, verifyPinReset);
 router.patch('/me', authJwt, updateProfile);
 router.post('/avatar', authJwt, uploadAvatarMiddleware, uploadAvatar);
 router.post('/app-logo', authJwt, uploadAppLogoMiddleware, uploadAppLogo);

@@ -38,6 +38,70 @@ const findByMember = async (userId) => {
   return res.rows;
 };
 
+/** Recent chats first: by latest message time (excluding messages hidden for user), else chat created_at */
+const findByMemberPaginated = async (userId, limit = 50, offset = 0) => {
+  const lim = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 100);
+  const off = Math.max(parseInt(offset, 10) || 0, 0);
+  const res = await query(
+    `SELECT c.* FROM chats c
+     JOIN chat_members cm ON cm.chat_id = c.id AND cm.user_id = $1
+     WHERE NOT EXISTS (
+       SELECT 1 FROM chat_archives ca WHERE ca.chat_id = c.id AND ca.user_id = $1
+     )
+     ORDER BY COALESCE(
+       (SELECT MAX(m.created_at) FROM messages m
+        WHERE m.chat_id = c.id
+        AND NOT EXISTS (
+          SELECT 1 FROM message_deleted_for d
+          WHERE d.message_id = m.id AND d.user_id = $1
+        )),
+       c.created_at
+     ) DESC NULLS LAST
+     LIMIT $2 OFFSET $3`,
+    [userId, lim + 1, off]
+  );
+  const rows = res.rows;
+  const hasMore = rows.length > lim;
+  return { chats: hasMore ? rows.slice(0, lim) : rows, hasMore };
+};
+
+/** Chat ids where the other member's username/display_name contains search (substring, case-insensitive) */
+const findChatIdsByPeerNameMatch = async (userId, searchText) => {
+  const raw = searchText && String(searchText).trim();
+  if (!raw) return [];
+  const res = await query(
+    `SELECT DISTINCT c.id
+     FROM chats c
+     JOIN chat_members cm ON cm.chat_id = c.id AND cm.user_id = $1
+     JOIN chat_members cm2 ON cm2.chat_id = c.id AND cm2.user_id != $1
+     JOIN users u ON u.id = cm2.user_id
+     WHERE strpos(lower(u.username), lower($2::text)) > 0
+        OR strpos(lower(COALESCE(u.display_name, '')), lower($2::text)) > 0`,
+    [userId, raw]
+  );
+  return res.rows.map((r) => r.id);
+};
+
+/** Order a set of chat ids by recent activity for this user */
+const findChatsByIdsOrderedForUser = async (userId, ids) => {
+  if (!ids || ids.length === 0) return [];
+  const res = await query(
+    `SELECT c.* FROM chats c
+     WHERE c.id = ANY($2::uuid[])
+     ORDER BY COALESCE(
+       (SELECT MAX(m.created_at) FROM messages m
+        WHERE m.chat_id = c.id
+        AND NOT EXISTS (
+          SELECT 1 FROM message_deleted_for d
+          WHERE d.message_id = m.id AND d.user_id = $1
+        )),
+       c.created_at
+     ) DESC NULLS LAST`,
+    [userId, ids]
+  );
+  return res.rows;
+};
+
 const findByMembers = async (userIdA, userIdB) => {
   const res = await query(
     `SELECT c.* FROM chats c
@@ -83,6 +147,9 @@ module.exports = {
   findById,
   getMembers,
   findByMember,
+  findByMemberPaginated,
+  findChatIdsByPeerNameMatch,
+  findChatsByIdsOrderedForUser,
   findByMembers,
   create,
   updateLastMessage,

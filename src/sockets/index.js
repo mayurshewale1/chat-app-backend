@@ -27,6 +27,7 @@ const toMessageResponse = (row) => ({
   ephemeral: row.ephemeral_mode ? { mode: row.ephemeral_mode } : null,
   expireAt: row.expire_at,
   createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+  isDeletedForEveryone: !!row.deleted_for_everyone,
 });
 
 function isOnline(userId) {
@@ -156,17 +157,45 @@ function initSockets(io) {
       }
     });
 
-    socket.on('message:delete', async ({ chatId, messageId }, cb) => {
+    socket.on('message:delete', async ({ chatId, messageId, scope = 'everyone' }, cb) => {
       try {
         const m = await messageRepo.findById(messageId);
         if (!m) return cb && cb({ success: false, error: 'Message not found' });
-        if (m.from_user_id !== user.id) return cb && cb({ success: false, error: 'Not authorized' });
         if (m.chat_id !== chatId) return cb && cb({ success: false, error: 'Invalid chat' });
 
-        await messageRepo.deleteById(messageId);
-        io.to(`user:${m.from_user_id}`).emit('message:deleted', { chatId, messageId });
-        io.to(`user:${m.to_user_id}`).emit('message:deleted', { chatId, messageId });
-        cb && cb({ success: true });
+        const members = await chatRepo.getMembers(chatId);
+        const memberIds = members.map((x) => x.id);
+        if (!memberIds.includes(user.id)) return cb && cb({ success: false, error: 'Not a member' });
+
+        const forMe = scope === 'me' || scope === 'forMe';
+        if (forMe) {
+          if (user.id !== m.from_user_id && user.id !== m.to_user_id) {
+            return cb && cb({ success: false, error: 'Not authorized' });
+          }
+          await messageRepo.markDeletedForMe(user.id, messageId);
+          io.to(`user:${user.id}`).emit('message:deleted', { chatId, messageId, scope: 'me' });
+          return cb && cb({ success: true, scope: 'me' });
+        }
+
+        if (m.from_user_id !== user.id) {
+          return cb && cb({ success: false, error: 'Only the sender can delete for everyone' });
+        }
+        if (m.deleted_for_everyone) {
+          return cb && cb({ success: false, error: 'Already deleted' });
+        }
+
+        const updated = await messageRepo.markDeletedForEveryone(messageId);
+        if (!updated) return cb && cb({ success: false, error: 'Failed to delete' });
+
+        const payload = {
+          chatId,
+          messageId,
+          isDeletedForEveryone: true,
+          message: toMessageResponse(updated),
+        };
+        io.to(`user:${m.from_user_id}`).emit('message:deleted', payload);
+        io.to(`user:${m.to_user_id}`).emit('message:deleted', payload);
+        cb && cb({ success: true, scope: 'everyone' });
       } catch (err) {
         logger.warn('message:delete error', err);
         cb && cb({ success: false, error: 'Failed to delete' });
@@ -223,21 +252,25 @@ function initSockets(io) {
           status: 'ringing',
         });
         const caller = await userRepo.findById(user.id);
+        const maskCaller = !!(caller && caller.privacy_mask_caller);
         const callerInfo = caller
-          ? { id: caller.id, username: caller.username, displayName: caller.display_name, avatar: caller.avatar || '👤' }
+          ? maskCaller
+            ? { id: caller.id, username: '', displayName: 'Incoming via PIN', avatar: '🔒' }
+            : { id: caller.id, username: caller.username, displayName: caller.display_name, avatar: caller.avatar || '👤' }
           : null;
         io.to(`user:${to}`).emit('call:incoming', {
           from: user.id,
           offer,
           isVideo: !!isVideo,
           caller: callerInfo,
+          maskCaller: maskCaller,
         });
 
         // Push notification for incoming call (when app is backgrounded or killed)
         pushService.notifyIncomingCall({
           toUserId: to,
           fromUserId: user.id,
-          fromName: callerInfo?.displayName || callerInfo?.username || 'Someone',
+          fromName: maskCaller ? 'Incoming via PIN' : callerInfo?.displayName || callerInfo?.username || 'Someone',
           isVideo: !!isVideo,
           callId: callRec?.id,
         }).catch(() => {});
@@ -267,11 +300,17 @@ function initSockets(io) {
       io.to(`user:${to}`).emit('call:ice-candidate', { from: user.id, candidate });
     });
 
-    socket.on('call:hangup', async ({ to }) => {
+    socket.on('call:hangup', async ({ to, durationSeconds }) => {
       try {
         if (to) {
-          const rec = await callHistoryRepo.findLatestRingingBetween(user.id, to);
-          if (rec) await callHistoryRepo.updateStatus(rec.id, 'cancelled');
+          const rec = await callHistoryRepo.findLatestActiveCallBetween(user.id, to);
+          if (rec) {
+            if (rec.status === 'completed') {
+              await callHistoryRepo.setDurationSeconds(rec.id, durationSeconds);
+            } else if (rec.status === 'ringing') {
+              await callHistoryRepo.updateStatus(rec.id, 'cancelled');
+            }
+          }
           const peerSet = activeCallPeers.get(user.id);
           if (peerSet) {
             peerSet.delete(to);

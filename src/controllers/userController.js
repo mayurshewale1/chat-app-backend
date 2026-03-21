@@ -1,15 +1,20 @@
 const userRepo = require('../db/userRepository');
 const deviceTokenRepo = require('../db/deviceTokenRepository');
+const firebaseAuth = require('../services/firebaseAuth');
 
 exports.getMe = async (req, res) => {
   const user = req.user;
   if (!user) return res.status(401).json({ message: 'Unauthorized' });
+  const full = await userRepo.findById(user.id, true);
   return res.json({
+    id: full?.id,
     uid: user.uid,
     username: user.username,
     displayName: user.display_name,
     avatar: user.avatar || '👤',
     appLogo: user.app_logo || null,
+    hasSecurityQuestion: !!(full && full.security_question),
+    privacyMaskCaller: !!(full && full.privacy_mask_caller),
   });
 };
 
@@ -163,9 +168,74 @@ exports.changePassword = async (req, res) => {
 
 exports.deleteAccount = async (req, res) => {
   try {
-    const ok = await userRepo.deactivateUser(req.user.id);
+    const ok = await userRepo.deleteUserPermanently(req.user.id);
     if (!ok) return res.status(404).json({ message: 'User not found' });
-    return res.json({ message: 'Account deactivated successfully' });
+    return res.json({
+      message: 'Account permanently deleted. All chats, calls, and connection data tied to this account have been removed.',
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.setSecurityQuestion = async (req, res) => {
+  const { question, answer } = req.body;
+  try {
+    await userRepo.setSecurityQuestion(req.user.id, question, answer);
+    return res.json({ message: 'Security question saved' });
+  } catch (err) {
+    if (err.status === 400) return res.status(400).json({ message: err.message });
+    console.error(err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.setPrivacyMaskCaller = async (req, res) => {
+  const { enabled } = req.body;
+  if (typeof enabled !== 'boolean') {
+    return res.status(400).json({ message: 'enabled (boolean) required' });
+  }
+  try {
+    await userRepo.updatePrivacyMaskCaller(req.user.id, enabled);
+    return res.json({ message: enabled ? 'Caller ID masked for outgoing calls' : 'Caller ID visible' });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+/**
+ * After Firebase phone OTP, verify security answer so PIN reset is not OTP-only.
+ * Client clears local PIN only after success.
+ */
+exports.verifyPinReset = async (req, res) => {
+  const { firebaseIdToken, securityAnswer } = req.body;
+  if (!firebaseIdToken || securityAnswer == null || String(securityAnswer).trim() === '') {
+    return res.status(400).json({ message: 'firebaseIdToken and securityAnswer required' });
+  }
+  try {
+    const user = await userRepo.findById(req.user.id, true);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    if (!user.mobile) {
+      return res.status(400).json({
+        message: 'Add a verified phone number to your account before resetting PIN with OTP.',
+      });
+    }
+    const verified = await firebaseAuth.verifyPhoneToken(firebaseIdToken);
+    if (!verified) {
+      return res.status(401).json({ message: 'Invalid or expired OTP session' });
+    }
+    const norm = firebaseAuth.normalizePhone(verified.phoneNumber);
+    const userMobile = String(user.mobile || '').replace(/\D/g, '').slice(-10);
+    if (!userMobile || userMobile !== norm) {
+      return res.status(403).json({ message: 'Phone number does not match this account' });
+    }
+    const ok = await userRepo.verifySecurityAnswer(req.user.id, securityAnswer);
+    if (!ok) {
+      return res.status(401).json({ message: 'Wrong security answer' });
+    }
+    return res.json({ ok: true, message: 'You can set a new PIN on this device' });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error' });

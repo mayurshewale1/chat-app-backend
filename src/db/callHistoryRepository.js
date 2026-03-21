@@ -18,6 +18,15 @@ const updateStatus = async (id, status) => {
   return res.rows[0];
 };
 
+const setDurationSeconds = async (id, seconds) => {
+  const s = Math.max(0, parseInt(seconds, 10) || 0);
+  const res = await query(
+    'UPDATE call_history SET duration_seconds = $1 WHERE id = $2 RETURNING *',
+    [s, id]
+  );
+  return res.rows[0] || null;
+};
+
 const findLatestRinging = async (callerId, calleeId) => {
   const res = await query(
     `SELECT * FROM call_history
@@ -33,6 +42,18 @@ const findLatestRingingBetween = async (userId1, userId2) => {
     `SELECT * FROM call_history
      WHERE ((caller_id = $1 AND callee_id = $2) OR (caller_id = $2 AND callee_id = $1))
      AND status = 'ringing'
+     ORDER BY created_at DESC LIMIT 1`,
+    [userId1, userId2]
+  );
+  return res.rows[0] || null;
+};
+
+/** Latest ringing or in-progress (answered) call between two users — for hangup duration / cancel */
+const findLatestActiveCallBetween = async (userId1, userId2) => {
+  const res = await query(
+    `SELECT * FROM call_history
+     WHERE ((caller_id = $1 AND callee_id = $2) OR (caller_id = $2 AND callee_id = $1))
+     AND status IN ('ringing', 'completed')
      ORDER BY created_at DESC LIMIT 1`,
     [userId1, userId2]
   );
@@ -60,7 +81,7 @@ const deleteAllForUser = async (userId) => {
 
 const listByUserId = async (userId) => {
   const res = await query(
-    `SELECT ch.id, ch.caller_id, ch.callee_id, ch.call_type, ch.status, ch.created_at,
+    `SELECT ch.id, ch.caller_id, ch.callee_id, ch.call_type, ch.status, ch.duration_seconds, ch.created_at,
             u_caller.id as caller_user_id, u_caller.username as caller_username, u_caller.display_name as caller_display_name, u_caller.avatar as caller_avatar,
             u_callee.id as callee_user_id, u_callee.username as callee_username, u_callee.display_name as callee_display_name, u_callee.avatar as callee_avatar
      FROM call_history ch
@@ -79,6 +100,8 @@ module.exports = {
   updateStatus,
   findLatestRinging,
   findLatestRingingBetween,
+  findLatestActiveCallBetween,
+  setDurationSeconds,
   listByUserId,
   deleteByIdForUser,
   deleteAllForUser,

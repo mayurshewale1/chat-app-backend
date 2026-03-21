@@ -40,7 +40,7 @@ exports.sendOtp = async (req, res) => {
 };
 
 exports.register = async (req, res) => {
-  const { username, password, displayName, mobile, otp, firebaseIdToken } = req.body;
+  const { username, password, displayName, mobile, otp, firebaseIdToken, securityQuestion, securityAnswer } = req.body;
 
   let normalizedMobile;
   if (mobile && otp) {
@@ -68,6 +68,15 @@ exports.register = async (req, res) => {
 
   if (normalizedMobile.length < 10) return res.status(400).json({ message: 'Invalid mobile number' });
 
+  const sq = securityQuestion != null ? String(securityQuestion).trim() : '';
+  const sa = securityAnswer != null ? String(securityAnswer).trim() : '';
+  if (!sq) return res.status(400).json({ message: 'Security question is required' });
+  if (sa.length < 2) return res.status(400).json({ message: 'Security answer must be at least 2 characters' });
+  const sqErr = blockedWords.validateUserContent(sq);
+  if (sqErr) return res.status(400).json({ message: `Security question: ${sqErr}` });
+  const saErr = blockedWords.validateUserContent(sa);
+  if (saErr) return res.status(400).json({ message: `Security answer: ${saErr}` });
+
   const normalizedUsername = String(username).trim().toLowerCase();
   if (!/^[a-z0-9_-]{3,30}$/i.test(normalizedUsername)) return res.status(400).json({ message: 'Invalid username format' });
 
@@ -87,6 +96,13 @@ exports.register = async (req, res) => {
     }
 
     const user = await userRepo.create({ username: normalizedUsername, password, displayName, mobile: normalizedMobile });
+    try {
+      await userRepo.setSecurityQuestion(user.id, securityQuestion, securityAnswer);
+    } catch (secErr) {
+      await userRepo.deleteUserPermanently(user.id).catch(() => {});
+      const status = secErr.status === 400 ? 400 : 500;
+      return res.status(status).json({ message: secErr.message || 'Could not save security question' });
+    }
     const token = signToken(user.id);
     return res.status(201).json({ uid: user.uid, accessToken: token, user: toUserResponse(user), mobile: user.mobile });
   } catch (err) {
@@ -135,10 +151,39 @@ exports.forgotPasswordRequest = async (req, res) => {
   });
 };
 
+/**
+ * After Firebase phone OTP: returns whether a security answer is required and the question text (for forgot-password UI).
+ */
+exports.resetPasswordContext = async (req, res) => {
+  const { firebaseIdToken } = req.body;
+  if (!firebaseIdToken || typeof firebaseIdToken !== 'string') {
+    return res.status(400).json({ message: 'firebaseIdToken required' });
+  }
+  try {
+    const verified = await firebaseAuth.verifyPhoneToken(firebaseIdToken);
+    if (!verified) {
+      return res.status(401).json({ message: 'Invalid or expired phone verification. Please verify your mobile again.' });
+    }
+    const normalizedMobile = firebaseAuth.normalizePhone(verified.phoneNumber);
+    const user = await userRepo.findByMobile(normalizedMobile);
+    if (!user) return res.status(404).json({ message: 'No account found with this mobile number' });
+    const full = await userRepo.findById(user.id, true);
+    const hasQ = await userRepo.hasSecurityQuestion(user.id);
+    return res.json({
+      hasSecurityQuestion: hasQ,
+      question: full?.security_question || null,
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
 exports.resetPassword = async (req, res) => {
-  const { mobile, otp, newPassword, firebaseIdToken } = req.body;
+  const { mobile, otp, newPassword, firebaseIdToken, securityAnswer } = req.body;
 
   let normalizedMobile;
+
   if (mobile && otp) {
     // New flow: backend OTP (no browser redirect)
     if (!newPassword) return res.status(400).json({ message: 'newPassword required' });
@@ -149,7 +194,7 @@ exports.resetPassword = async (req, res) => {
     }
     normalizedMobile = cleaned.slice(-10);
   } else if (firebaseIdToken) {
-    // Legacy flow: Firebase
+    // Firebase Phone Auth
     if (!newPassword) return res.status(400).json({ message: 'firebaseIdToken and newPassword required' });
     const verified = await firebaseAuth.verifyPhoneToken(firebaseIdToken);
     if (!verified) return res.status(400).json({ message: 'Invalid or expired phone verification. Please verify your mobile again.' });
@@ -162,6 +207,17 @@ exports.resetPassword = async (req, res) => {
 
   const user = await userRepo.findByMobile(normalizedMobile);
   if (!user) return res.status(404).json({ message: 'No account found with this mobile number' });
+
+  const needsSecurity = await userRepo.hasSecurityQuestion(user.id);
+  if (needsSecurity) {
+    if (securityAnswer == null || String(securityAnswer).trim() === '') {
+      return res.status(400).json({ message: 'Security answer required' });
+    }
+    const ok = await userRepo.verifySecurityAnswer(user.id, securityAnswer);
+    if (!ok) {
+      return res.status(401).json({ message: 'Wrong security answer' });
+    }
+  }
 
   try {
     const hashedPassword = await bcrypt.hash(newPassword, 10);

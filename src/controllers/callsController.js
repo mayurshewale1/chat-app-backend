@@ -1,6 +1,15 @@
 const callHistoryRepo = require('../db/callHistoryRepository');
 const config = require('../config');
 
+function formatDurationLabel(totalSeconds) {
+  const s = Math.max(0, parseInt(totalSeconds, 10) || 0);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  return `${m}:${String(sec).padStart(2, '0')}`;
+}
+
 /**
  * Returns ICE servers for WebRTC (STUN + TURN).
  * TURN enables calls across different networks (WiFi vs mobile data).
@@ -83,14 +92,34 @@ exports.getHistory = async (req, res) => {
             displayName: row.caller_display_name,
             avatar: row.caller_avatar || '👤',
           };
-      let status = row.status;
-      if (!isOutgoing && row.status === 'cancelled') status = 'missed';
+      const rawStatus = row.status;
+      let status = rawStatus;
+      if (!isOutgoing && rawStatus === 'cancelled') status = 'missed';
+
+      let displayCategory = 'incoming';
+      if (rawStatus === 'missed' || rawStatus === 'rejected' || (!isOutgoing && rawStatus === 'cancelled')) {
+        displayCategory = 'missed';
+      } else if (isOutgoing) {
+        displayCategory = 'outgoing';
+      } else {
+        displayCategory = 'incoming';
+      }
+
+      const dur = row.duration_seconds != null ? parseInt(row.duration_seconds, 10) : null;
+      const durationLabel =
+        dur != null && dur >= 0 && rawStatus === 'completed'
+          ? formatDurationLabel(dur)
+          : null;
+
       return {
         id: row.id,
         otherUser: other,
         direction: isOutgoing ? 'outgoing' : 'incoming',
+        displayCategory,
         callType: row.call_type,
         status,
+        durationSeconds: dur,
+        durationLabel,
         createdAt: row.created_at,
       };
     });
