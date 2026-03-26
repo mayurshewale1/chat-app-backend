@@ -17,6 +17,10 @@ const isDeletedByUser = async (userId, chatId) => {
   return res.rows.length > 0;
 };
 
+const clearDeletion = async (userId, chatId) => {
+  await query('DELETE FROM deleted_chats WHERE user_id = $1 AND chat_id = $2', [userId, chatId]);
+};
+
 /**
  * Get chat IDs that should be purged: all members have deleted and earliest deletion is > 7 days ago.
  */
@@ -35,5 +39,6 @@ const getChatsToPurge = async () => {
 module.exports = {
   recordDeletion,
   isDeletedByUser,
+  clearDeletion,
   getChatsToPurge,
 };

@@ -1,4 +1,9 @@
 const messageRepo = require('../db/messageRepository');
+const { toMessageResponse } = require('../utils/messageResponse');
+const {
+  processRecipientRead,
+  processRecipientReadAndEmit,
+} = require('../services/ephemeralMessageService');
 
 exports.markDelivered = async (req, res) => {
   const { id } = req.params;
@@ -18,27 +23,51 @@ exports.markDelivered = async (req, res) => {
 exports.markRead = async (req, res) => {
   const { id } = req.params;
   try {
-    const m = await messageRepo.findById(id);
+    const result = await processRecipientReadAndEmit(req.user.id, id);
+    if (!result.ok) {
+      if (result.reason === 'not_found' || result.reason === 'gone') {
+        return res.status(404).json({ message: 'Message not found' });
+      }
+      if (result.reason === 'not_recipient') return res.status(403).json({ message: 'Not authorized' });
+      return res.status(400).json({ message: 'Cannot update message' });
+    }
+    if (result.deleted) {
+      return res.json({ message: 'viewed and deleted', deleted: true });
+    }
+    const row = await messageRepo.findById(id);
+    return res.json(toMessageResponse(row));
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.saveMessage = async (req, res) => {
+  const { messageId } = req.params;
+  try {
+    const m = await messageRepo.findById(messageId);
     if (!m) return res.status(404).json({ message: 'Message not found' });
-    if (m.to_user_id !== req.user.id) return res.status(403).json({ message: 'Not authorized' });
+    if (m.from_user_id !== req.user.id && m.to_user_id !== req.user.id) {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+    const updated = await messageRepo.setSaved(messageId, true);
+    return res.json(toMessageResponse(updated));
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
 
-    if (m.ephemeral_mode === 'viewOnce') {
-      await messageRepo.deleteById(id);
-      return res.json({ message: 'viewed and deleted' });
+exports.unsaveMessage = async (req, res) => {
+  const { messageId } = req.params;
+  try {
+    const m = await messageRepo.findById(messageId);
+    if (!m) return res.status(404).json({ message: 'Message not found' });
+    if (m.from_user_id !== req.user.id && m.to_user_id !== req.user.id) {
+      return res.status(403).json({ message: 'Not authorized' });
     }
-    if (m.ephemeral_mode === '24h') {
-      const expireAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-      await messageRepo.setExpireAtAndStatus(id, expireAt, 'read');
-      return res.json({ message: 'updated' });
-    }
-    if (m.ephemeral_mode === '7d') {
-      const expireAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-      await messageRepo.setExpireAtAndStatus(id, expireAt, 'read');
-      return res.json({ message: 'updated' });
-    }
-
-    await messageRepo.updateStatus(id, 'read');
-    return res.json({ message: 'updated' });
+    const updated = await messageRepo.setSaved(messageId, false);
+    return res.json(toMessageResponse(updated));
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error' });

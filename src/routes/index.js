@@ -5,6 +5,7 @@ const chatsRoutes = require('./chats');
 const connectionsRoutes = require('./connections');
 const userRoutes = require('./users');
 const callsRoutes = require('./calls');
+const messagesRoutes = require('./messages');
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -21,5 +22,6 @@ router.use('/users', userRoutes);
 router.use('/connections', connectionsRoutes);
 router.use('/chats', chatsRoutes);
 router.use('/calls', callsRoutes);
+router.use('/messages', messagesRoutes);
 
 module.exports = router;

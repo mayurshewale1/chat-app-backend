@@ -45,9 +45,6 @@ const findByMemberPaginated = async (userId, limit = 50, offset = 0) => {
   const res = await query(
     `SELECT c.* FROM chats c
      JOIN chat_members cm ON cm.chat_id = c.id AND cm.user_id = $1
-     WHERE NOT EXISTS (
-       SELECT 1 FROM chat_archives ca WHERE ca.chat_id = c.id AND ca.user_id = $1
-     )
      ORDER BY COALESCE(
        (SELECT MAX(m.created_at) FROM messages m
         WHERE m.chat_id = c.id
@@ -109,7 +106,28 @@ const findByMembers = async (userIdA, userIdB) => {
      JOIN chat_members cm2 ON cm2.chat_id = c.id AND cm2.user_id = $2`,
     [userIdA, userIdB]
   );
-  return res.rows[0] || null;
+  // If duplicate chats exist between the same 2 users, pick the most "active" one.
+  // (Without ORDER BY, postgres can return an arbitrary row.)
+  // We consider "active" = most recent message time, else chat created time.
+  const rows = res.rows;
+  if (!rows.length) return null;
+  if (rows.length === 1) return rows[0];
+  const ids = rows.map((r) => r.id);
+  const ranked = await query(
+    `SELECT c.id,
+      (SELECT MAX(m.created_at) FROM messages m WHERE m.chat_id = c.id) AS last_message_at,
+      EXISTS (SELECT 1 FROM messages m WHERE m.chat_id = c.id) AS has_messages
+     FROM chats c
+     WHERE c.id = ANY($1::uuid[])
+     ORDER BY
+       has_messages DESC,
+       last_message_at DESC NULLS LAST,
+       c.created_at DESC NULLS LAST
+     LIMIT 1`,
+    [ids]
+  );
+  const bestId = ranked.rows[0]?.id;
+  return rows.find((r) => r.id === bestId) || rows[0];
 };
 
 const create = async (memberIds) => {

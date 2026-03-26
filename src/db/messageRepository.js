@@ -76,10 +76,10 @@ const countUnreadForUser = async (chatId, userId) => {
   return res.rows[0]?.count ?? 0;
 };
 
-const create = async ({ chatId, fromUserId, toUserId, content, type, ephemeral, expireAt }) => {
+const create = async ({ chatId, fromUserId, toUserId, content, type, ephemeral, expireAt, isSaved }) => {
   const res = await query(
-    `INSERT INTO messages (chat_id, from_user_id, to_user_id, content, type, ephemeral_mode, expire_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO messages (chat_id, from_user_id, to_user_id, content, type, ephemeral_mode, expire_at, is_saved)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, false))
      RETURNING *`,
     [
       chatId,
@@ -89,6 +89,7 @@ const create = async ({ chatId, fromUserId, toUserId, content, type, ephemeral, 
       type || 'text',
       ephemeral?.mode || null,
       expireAt || null,
+      !!isSaved,
     ]
   );
   return res.rows[0];
@@ -107,6 +108,35 @@ const setExpireAtAndStatus = async (id, expireAt, status = 'read') => {
     'UPDATE messages SET status = $1, expire_at = $2 WHERE id = $3 RETURNING *',
     [status, expireAt, id]
   );
+  return res.rows[0] || null;
+};
+
+const setFirstSeenAtIfNull = async (id) => {
+  await query(
+    `UPDATE messages SET first_seen_at = COALESCE(first_seen_at, NOW()) WHERE id = $1`,
+    [id]
+  );
+};
+
+/** Sets first_seen_at, expire_at = first_seen + durationMs, status read. */
+const setSeenAndExpireAfter = async (id, durationMs) => {
+  await query(
+    `UPDATE messages SET first_seen_at = COALESCE(first_seen_at, NOW()) WHERE id = $1`,
+    [id]
+  );
+  const cur = await query(`SELECT first_seen_at FROM messages WHERE id = $1`, [id]);
+  const fs = cur.rows[0]?.first_seen_at;
+  if (!fs) return null;
+  const expireAt = new Date(new Date(fs).getTime() + durationMs);
+  const res = await query(
+    `UPDATE messages SET expire_at = $2, status = 'read' WHERE id = $1 RETURNING *`,
+    [id, expireAt.toISOString()]
+  );
+  return res.rows[0] || null;
+};
+
+const setSaved = async (id, saved) => {
+  const res = await query('UPDATE messages SET is_saved = $2 WHERE id = $1 RETURNING *', [id, !!saved]);
   return res.rows[0] || null;
 };
 
@@ -138,7 +168,12 @@ const deleteByChatId = async (chatId) => {
 };
 
 const deleteExpired = async () => {
-  await query('DELETE FROM messages WHERE expire_at IS NOT NULL AND expire_at <= NOW()');
+  const res = await query(
+    `DELETE FROM messages
+     WHERE expire_at IS NOT NULL AND expire_at <= NOW()
+     RETURNING id, chat_id, from_user_id, to_user_id`
+  );
+  return res.rows;
 };
 
 const deleteByEphemeralMode = async (mode, toUserId) => {
@@ -177,6 +212,9 @@ module.exports = {
   create,
   updateStatus,
   setExpireAtAndStatus,
+  setFirstSeenAtIfNull,
+  setSeenAndExpireAfter,
+  setSaved,
   deleteById,
   markDeletedForMe,
   markDeletedForEveryone,

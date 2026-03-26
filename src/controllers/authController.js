@@ -92,7 +92,7 @@ exports.register = async (req, res) => {
     const existing = await userRepo.findByUsernameOrMobile(normalizedUsername, normalizedMobile);
     if (existing) {
       if (existing.username === normalizedUsername) return res.status(409).json({ message: 'Username already taken' });
-      return res.status(409).json({ message: 'Mobile number already registered' });
+      return res.status(409).json({ message: 'This mobile number has an issue. Please use another number.' });
     }
 
     const user = await userRepo.create({ username: normalizedUsername, password, displayName, mobile: normalizedMobile });

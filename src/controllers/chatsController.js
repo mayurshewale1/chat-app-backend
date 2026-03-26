@@ -1,32 +1,15 @@
 const chatRepo = require('../db/chatRepository');
 const messageRepo = require('../db/messageRepository');
 const deletedChatRepo = require('../db/deletedChatRepository');
-const archiveRepo = require('../db/archiveRepository');
 const connectionRepo = require('../db/connectionRepository');
 const blockRepo = require('../db/blockRepository');
 const userRepo = require('../db/userRepository');
 const blockedWords = require('../services/blockedWords');
 const { getIo } = require('../ioHolder');
 const { getOrCreatePrivateChat } = require('../services/chatService');
-
-const toMessageResponse = (row) => ({
-  id: row.id,
-  _id: row.id,
-  chat: row.chat_id,
-  from: row.from_user_id,
-  to: row.to_user_id,
-  content: row.content,
-  type: row.type,
-  status: row.status,
-  ephemeral: row.ephemeral_mode ? { mode: row.ephemeral_mode } : null,
-  expireAt: row.expire_at,
-  createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
-  isDeletedForEveryone: !!row.deleted_for_everyone,
-});
+const { toMessageResponse, normalizeEphemeralInput } = require('../utils/messageResponse');
 
 async function buildChatListEntry(userId, c) {
-  const archived = await archiveRepo.isArchived(userId, c.id);
-  if (archived) return null;
   const userDeleted = await deletedChatRepo.isDeletedByUser(userId, c.id);
   if (userDeleted) return null;
   const members = await chatRepo.getMembers(c.id);
@@ -82,6 +65,9 @@ exports.startChat = async (req, res) => {
     if (!isFriend) return res.status(403).json({ message: 'User is not a friend. Add them first.' });
 
     const chat = await getOrCreatePrivateChat(req.user.id, otherUserId);
+    // If the user previously deleted this chat for themselves, un-hide it
+    // when starting a chat again (prevents "can't chat again after delete").
+    await deletedChatRepo.clearDeletion(req.user.id, chat.id);
     const members = await chatRepo.getMembers(chat.id);
     const other = members.find((m) => m.id !== req.user.id);
 
@@ -146,7 +132,11 @@ exports.getMessages = async (req, res) => {
     if (!chat) return res.status(404).json({ message: 'Chat not found' });
 
     const userDeleted = await deletedChatRepo.isDeletedByUser(req.user.id, chatId);
-    if (userDeleted) return res.status(404).json({ message: 'Chat not found' });
+    if (userDeleted) {
+      // Allow re-opening a chat even after it was removed from the user's chat list.
+      // "deleted_chats" is a UI hide flag, not a hard delete.
+      await deletedChatRepo.clearDeletion(req.user.id, chatId);
+    }
 
     const members = await chatRepo.getMembers(chatId);
     const memberIds = members.map((m) => m.id);
@@ -204,7 +194,9 @@ exports.sendMessage = async (req, res) => {
     if (!chat) return res.status(404).json({ message: 'Chat not found' });
 
     const userDeleted = await deletedChatRepo.isDeletedByUser(req.user.id, chatId);
-    if (userDeleted) return res.status(404).json({ message: 'Chat not found' });
+    if (userDeleted) {
+      await deletedChatRepo.clearDeletion(req.user.id, chatId);
+    }
 
     const members = await chatRepo.getMembers(chatId);
     const memberIds = members.map((m) => m.id);
@@ -224,14 +216,16 @@ exports.sendMessage = async (req, res) => {
       if (msgError) return res.status(400).json({ message: msgError });
     }
 
+    const norm = normalizeEphemeralInput(ephemeral || {});
     const message = await messageRepo.create({
       chatId,
       fromUserId: req.user.id,
       toUserId: recipientId,
       content,
       type: type || 'text',
-      ephemeral: ephemeral || null,
+      ephemeral: norm.mode ? { mode: norm.mode } : null,
       expireAt: null,
+      isSaved: norm.isSaved,
     });
 
     const lastMsgDisplay = (type || 'text') === 'media' ? '📷 Photo' : content;
@@ -253,7 +247,9 @@ exports.uploadChatImage = async (req, res) => {
     if (!chat) return res.status(404).json({ message: 'Chat not found' });
 
     const userDeleted = await deletedChatRepo.isDeletedByUser(req.user.id, chatId);
-    if (userDeleted) return res.status(404).json({ message: 'Chat not found' });
+    if (userDeleted) {
+      await deletedChatRepo.clearDeletion(req.user.id, chatId);
+    }
 
     const members = await chatRepo.getMembers(chatId);
     const memberIds = members.map((m) => m.id);
@@ -281,7 +277,9 @@ exports.clearChat = async (req, res) => {
     if (!chat) return res.status(404).json({ message: 'Chat not found' });
 
     const userDeleted = await deletedChatRepo.isDeletedByUser(req.user.id, chatId);
-    if (userDeleted) return res.status(404).json({ message: 'Chat not found' });
+    if (userDeleted) {
+      await deletedChatRepo.clearDeletion(req.user.id, chatId);
+    }
 
     const members = await chatRepo.getMembers(chatId);
     const memberIds = members.map((m) => m.id);
@@ -322,29 +320,3 @@ exports.deleteChat = async (req, res) => {
   }
 };
 
-exports.archiveChat = async (req, res) => {
-  const { chatId } = req.params;
-  try {
-    const chat = await chatRepo.findById(chatId);
-    if (!chat) return res.status(404).json({ message: 'Chat not found' });
-    const members = await chatRepo.getMembers(chatId);
-    if (!members.some((m) => m.id === req.user.id)) return res.status(403).json({ message: 'Not a member' });
-    await archiveRepo.archive(req.user.id, chatId);
-    return res.json({ status: 'archived' });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ message: 'Server error' });
-  }
-};
-
-exports.unarchiveChat = async (req, res) => {
-  const { chatId } = req.params;
-  try {
-    const ok = await archiveRepo.unarchive(req.user.id, chatId);
-    if (!ok) return res.status(404).json({ message: 'Not archived' });
-    return res.json({ status: 'unarchived' });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ message: 'Server error' });
-  }
-};

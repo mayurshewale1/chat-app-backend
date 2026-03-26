@@ -9,26 +9,13 @@ const deletedChatRepo = require('../db/deletedChatRepository');
 const blockRepo = require('../db/blockRepository');
 const blockedWords = require('../services/blockedWords');
 const logger = require('../utils/logger');
+const { toMessageResponse, normalizeEphemeralInput } = require('../utils/messageResponse');
+const { processRecipientReadAndEmit } = require('../services/ephemeralMessageService');
 
 const socketCountByUser = new Map();
 const activeCallPeers = new Map();
 const SOCKET_RATE_LIMIT = { windowMs: 60000, maxPerWindow: 120 };
 const socketEventCounts = new Map();
-
-const toMessageResponse = (row) => ({
-  id: row.id,
-  _id: row.id,
-  chat: row.chat_id,
-  from: row.from_user_id,
-  to: row.to_user_id,
-  content: row.content,
-  type: row.type,
-  status: row.status,
-  ephemeral: row.ephemeral_mode ? { mode: row.ephemeral_mode } : null,
-  expireAt: row.expire_at,
-  createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
-  isDeletedForEveryone: !!row.deleted_for_everyone,
-});
 
 function isOnline(userId) {
   return (socketCountByUser.get(userId) || 0) > 0;
@@ -100,26 +87,28 @@ function initSockets(io) {
       try {
         const userDeleted = await deletedChatRepo.isDeletedByUser(user.id, payload.chatId);
         if (userDeleted) {
-          return cb && cb({ success: false, error: 'Chat not found' });
+          return cb && cb({ success: false, error: 'Chat not found', clientTempId: payload?.clientTempId });
         }
         const isBlocked = await blockRepo.isBlocked(user.id, payload.to) || await blockRepo.isBlocked(payload.to, user.id);
         if (isBlocked) {
-          return cb && cb({ success: false, error: 'Cannot message blocked user' });
+          return cb && cb({ success: false, error: 'Cannot message blocked user', clientTempId: payload?.clientTempId });
         }
 
         if (payload.type === 'text' && payload.content) {
           const msgError = blockedWords.validateMessageContent(payload.content);
-          if (msgError) return cb && cb({ success: false, error: msgError });
+          if (msgError) return cb && cb({ success: false, error: msgError, clientTempId: payload?.clientTempId });
         }
 
+        const norm = normalizeEphemeralInput(payload.ephemeral || {});
         const message = await messageRepo.create({
           chatId: payload.chatId,
           fromUserId: user.id,
           toUserId: payload.to,
           content: payload.content,
           type: payload.type || 'text',
-          ephemeral: payload.ephemeral || null,
+          ephemeral: norm.mode ? { mode: norm.mode } : null,
           expireAt: null,
+          isSaved: norm.isSaved,
         });
 
         const lastMsgDisplay = payload.type === 'media' ? '📷 Photo' : payload.content;
@@ -141,10 +130,10 @@ function initSockets(io) {
           }).catch(() => {});
         }
 
-        cb && cb({ success: true, message: 'Sent', id: message.id });
+        cb && cb({ success: true, message: 'Sent', id: message.id, clientTempId: payload?.clientTempId });
       } catch (err) {
         logger.error('message:send error', err);
-        cb && cb({ success: false, error: 'Failed to send' });
+        cb && cb({ success: false, error: 'Failed to send', clientTempId: payload?.clientTempId });
       }
     });
 
@@ -213,25 +202,7 @@ function initSockets(io) {
 
     socket.on('message:read', async ({ messageId }) => {
       try {
-        const m = await messageRepo.findById(messageId);
-        if (!m) return;
-        if (m.to_user_id !== user.id) return;
-        const receiptsEnabled = await userRepo.getReadReceiptsEnabled(user.id);
-        if (m.ephemeral_mode === 'viewOnce') {
-          await messageRepo.updateStatus(messageId, 'read');
-          io.to(`user:${m.from_user_id}`).emit('message:status', { messageId, status: receiptsEnabled ? 'read' : 'delivered' });
-        } else if (m.ephemeral_mode === '24h') {
-          const expireAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-          await messageRepo.setExpireAtAndStatus(messageId, expireAt, 'read');
-          io.to(`user:${m.from_user_id}`).emit('message:status', { messageId, status: receiptsEnabled ? 'read' : 'delivered' });
-        } else if (m.ephemeral_mode === '7d') {
-          const expireAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-          await messageRepo.setExpireAtAndStatus(messageId, expireAt, 'read');
-          io.to(`user:${m.from_user_id}`).emit('message:status', { messageId, status: receiptsEnabled ? 'read' : 'delivered' });
-        } else {
-          await messageRepo.updateStatus(messageId, 'read');
-          io.to(`user:${m.from_user_id}`).emit('message:status', { messageId, status: receiptsEnabled ? 'read' : 'delivered' });
-        }
+        await processRecipientReadAndEmit(user.id, messageId);
       } catch (err) {
         logger.warn(err);
       }

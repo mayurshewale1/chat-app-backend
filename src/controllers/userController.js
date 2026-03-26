@@ -14,6 +14,8 @@ exports.getMe = async (req, res) => {
     avatar: user.avatar || '👤',
     appLogo: user.app_logo || null,
     hasSecurityQuestion: !!(full && full.security_question),
+    /** Question text only (for UI); answer is never returned */
+    securityQuestion: full?.security_question || null,
     privacyMaskCaller: !!(full && full.privacy_mask_caller),
   });
 };

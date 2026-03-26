@@ -234,6 +234,7 @@ exports.blockUser = async (req, res) => {
   try {
     await blockRepo.block(req.user.id, userId);
     await connectionRepo.removeBetweenUsers(req.user.id, userId);
+    /** Chat stays in list; client shows "blocked" state and disables messaging/calls */
     return res.json({ message: 'User blocked' });
   } catch (err) {
     console.error(err);

@@ -66,6 +66,17 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE INDEX IF NOT EXISTS idx_messages_chat ON messages(chat_id);
 CREATE INDEX IF NOT EXISTS idx_messages_expire ON messages(expire_at) WHERE expire_at IS NOT NULL;
 
+-- Ephemeral: first time recipient viewed (seenAt in API), keep-after-read flag
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'messages' AND column_name = 'first_seen_at') THEN
+    ALTER TABLE messages ADD COLUMN first_seen_at TIMESTAMPTZ;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'messages' AND column_name = 'is_saved') THEN
+    ALTER TABLE messages ADD COLUMN is_saved BOOLEAN NOT NULL DEFAULT FALSE;
+  END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS connections (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   from_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -149,4 +160,4 @@ CREATE INDEX IF NOT EXISTS idx_blocks_blocker ON blocks(blocker_id);
 CREATE INDEX IF NOT EXISTS idx_blocks_blocked ON blocks(blocked_id);
 
 -- See migrations/add_request_history_security_privacy_archive.sql for:
--- connection_history_hidden, chat_archives, users.security_question, security_answer_hash, privacy_mask_caller
+-- connection_history_hidden, chat_archives (unused; archive feature removed), users.security_question, security_answer_hash, privacy_mask_caller
