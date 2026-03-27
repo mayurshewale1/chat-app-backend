@@ -1,7 +1,7 @@
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
-const { nanoid } = require('nanoid');
+const { nanoid } = require('nanoid/non-secure');
 
 const UPLOAD_DIR = path.join(__dirname, '..', '..', 'uploads', 'chat-images');
 const MAX_SIZE = 25 * 1024 * 1024; // 25MB

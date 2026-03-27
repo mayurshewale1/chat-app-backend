@@ -77,6 +77,23 @@ BEGIN
   END IF;
 END $$;
 
+-- Reply functionality: reference to message being replied to
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'messages' AND column_name = 'reply_to_message_id') THEN
+    ALTER TABLE messages ADD COLUMN reply_to_message_id UUID REFERENCES messages(id) ON DELETE SET NULL;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'messages' AND column_name = 'reply_to_text') THEN
+    ALTER TABLE messages ADD COLUMN reply_to_text TEXT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'messages' AND column_name = 'reply_to_sender') THEN
+    ALTER TABLE messages ADD COLUMN reply_to_sender BOOLEAN;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'messages' AND column_name = 'reply_to_type') THEN
+    ALTER TABLE messages ADD COLUMN reply_to_type VARCHAR(20);
+  END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS connections (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   from_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,

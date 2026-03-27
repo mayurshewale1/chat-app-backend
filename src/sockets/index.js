@@ -109,6 +109,7 @@ function initSockets(io) {
           ephemeral: norm.mode ? { mode: norm.mode } : null,
           expireAt: null,
           isSaved: norm.isSaved,
+          replyTo: payload.replyTo || null,
         });
 
         const lastMsgDisplay = payload.type === 'media' ? '📷 Photo' : payload.content;

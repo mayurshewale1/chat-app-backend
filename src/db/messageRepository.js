@@ -76,10 +76,10 @@ const countUnreadForUser = async (chatId, userId) => {
   return res.rows[0]?.count ?? 0;
 };
 
-const create = async ({ chatId, fromUserId, toUserId, content, type, ephemeral, expireAt, isSaved }) => {
+const create = async ({ chatId, fromUserId, toUserId, content, type, ephemeral, expireAt, isSaved, replyTo }) => {
   const res = await query(
-    `INSERT INTO messages (chat_id, from_user_id, to_user_id, content, type, ephemeral_mode, expire_at, is_saved)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, false))
+    `INSERT INTO messages (chat_id, from_user_id, to_user_id, content, type, ephemeral_mode, expire_at, is_saved, reply_to_message_id, reply_to_text, reply_to_sender, reply_to_type)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, false), $9, $10, $11, $12)
      RETURNING *`,
     [
       chatId,
@@ -90,6 +90,10 @@ const create = async ({ chatId, fromUserId, toUserId, content, type, ephemeral, 
       ephemeral?.mode || null,
       expireAt || null,
       !!isSaved,
+      replyTo?.messageId || null,
+      replyTo?.text || null,
+      replyTo?.sender !== undefined ? replyTo.sender : null,
+      replyTo?.type || null,
     ]
   );
   return res.rows[0];

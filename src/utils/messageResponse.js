@@ -42,6 +42,17 @@ function toMessageResponse(row) {
   const expireAt =
     row.expire_at instanceof Date ? row.expire_at.toISOString() : row.expire_at || null;
 
+  // Build replyTo object if reply data exists
+  let replyTo = null;
+  if (row.reply_to_message_id || row.reply_to_text || row.reply_to_sender !== null || row.reply_to_type) {
+    replyTo = {
+      messageId: row.reply_to_message_id,
+      text: row.reply_to_text,
+      sender: row.reply_to_sender,
+      type: row.reply_to_type,
+    };
+  }
+
   return {
     id: row.id,
     _id: row.id,
@@ -59,6 +70,7 @@ function toMessageResponse(row) {
     isDeletedForEveryone: !!row.deleted_for_everyone,
     isDeleted: !!row.deleted_for_everyone,
     isSaved: !!row.is_saved,
+    replyTo,
   };
 }
 

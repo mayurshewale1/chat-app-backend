@@ -10,6 +10,12 @@ const messageSchema = new mongoose.Schema({
   ephemeral_mode: { type: String, enum: ['24h', '7d', 'viewOnce', 'deleteOnExit'] },
   expire_at: { type: Date },
   created_at: { type: Date, default: Date.now },
+  reply_to: {
+    message_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Message' },
+    text: { type: String },
+    sender: { type: Boolean },
+    type: { type: String }
+  }
 });
 
 module.exports = mongoose.model('Message', messageSchema);
