@@ -273,6 +273,8 @@ exports.clearChat = async (req, res) => {
   const { chatId } = req.params;
 
   try {
+    console.log(`[DEBUG] clearChat called by user ${req.user.id} for chat ${chatId}`);
+    
     const chat = await chatRepo.findById(chatId);
     if (!chat) return res.status(404).json({ message: 'Chat not found' });
 
@@ -290,9 +292,42 @@ exports.clearChat = async (req, res) => {
     await chatRepo.updateLastMessage(chatId, null);
     if (otherUser) {
       const io = getIo();
-      if (io) io.to(`user:${otherUser.id}`).emit('chat:cleared', { chatId });
+      if (io) {
+        console.log(`[DEBUG] Emitting chat:cleared to user ${otherUser.id} for chat ${chatId}`);
+        io.to(`user:${otherUser.id}`).emit('chat:cleared', { chatId });
+      }
     }
     return res.status(200).json({ status: 'cleared' });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.deleteViewOnceMessages = async (req, res) => {
+  const { chatId } = req.params;
+  const userId = req.user.id;
+
+  try {
+    console.log(`[DEBUG] deleteViewOnceMessages called by user ${userId} for chat ${chatId}`);
+    
+    const chat = await chatRepo.findById(chatId);
+    if (!chat) return res.status(404).json({ message: 'Chat not found' });
+
+    const members = await chatRepo.getMembers(chatId);
+    const memberIds = members.map((m) => m.id);
+    if (!memberIds.includes(userId)) return res.status(403).json({ message: 'Not a member' });
+
+    // Delete all viewOnce messages that have been viewed (first_seen_at is not null)
+    await messageRepo.deleteViewedViewOnceMessages(chatId, userId);
+    
+    const io = getIo();
+    if (io) {
+      console.log(`[DEBUG] Emitting viewOnce:deleted to user ${userId} for chat ${chatId}`);
+      io.to(`user:${userId}`).emit('viewOnce:deleted', { chatId });
+    }
+    
+    return res.status(200).json({ status: 'deleted' });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error' });

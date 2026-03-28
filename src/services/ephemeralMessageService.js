@@ -52,11 +52,11 @@ async function processRecipientRead(readerUserId, messageId) {
     const fromId = m.from_user_id;
     const toId = m.to_user_id;
     await messageRepo.setFirstSeenAtIfNull(messageId);
-    await messageRepo.deleteById(messageId);
+    await messageRepo.updateStatus(messageId, 'read');
     await refreshChatLastMessage(chatId);
     return {
       ok: true,
-      deleted: true,
+      viewed: true, // Changed from 'deleted' to 'viewed'
       chatId,
       messageId,
       fromId,
@@ -103,6 +103,21 @@ async function processRecipientRead(readerUserId, messageId) {
 function emitReadSideEffects(result) {
   const io = getIo();
   if (!io || !result.ok || result.noop) return;
+
+  if (result.viewed) {
+    // View Once message was viewed but not deleted yet
+    io.to(`user:${result.fromId}`).emit('message:status', {
+      messageId: result.messageId,
+      status: result.statusForSender,
+    });
+    
+    // Send viewed event to recipient for potential screen exit handling
+    io.to(`user:${result.toId}`).emit('message:viewed', {
+      messageId: result.messageId,
+      chatId: result.chatId,
+    });
+    return;
+  }
 
   if (result.deleted) {
     io.to(`user:${result.fromId}`).emit('message:status', {

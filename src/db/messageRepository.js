@@ -180,10 +180,14 @@ const deleteExpired = async () => {
   return res.rows;
 };
 
-const deleteByEphemeralMode = async (mode, toUserId) => {
+const deleteViewedViewOnceMessages = async (chatId, userId) => {
   await query(
-    'DELETE FROM messages WHERE ephemeral_mode = $1 AND to_user_id = $2',
-    [mode, toUserId]
+    `DELETE FROM messages 
+     WHERE chat_id = $1 
+     AND ephemeral_mode = 'viewOnce' 
+     AND to_user_id = $2 
+     AND first_seen_at IS NOT NULL`,
+    [chatId, userId]
   );
 };
 
@@ -208,23 +212,24 @@ const searchChatIdsByContent = async (userId, searchText) => {
 };
 
 module.exports = {
+  create,
   findById,
   findByChat,
-  getLastMessage,
-  getLastMessageForUser,
-  countUnreadForUser,
-  create,
+  findByChatForUser,
+  markAsRead,
+  markAsDelivered,
   updateStatus,
-  setExpireAtAndStatus,
-  setFirstSeenAtIfNull,
   setSeenAndExpireAfter,
-  setSaved,
-  deleteById,
-  markDeletedForMe,
-  markDeletedForEveryone,
+  setFirstSeenAtIfNull,
+  countUnreadForUser,
+  getLastMessageForUser,
+  getLastMessage,
   deleteByChatId,
   deleteExpired,
   deleteByEphemeralMode,
+  deleteViewedViewOnceMessages,
   markDeletedForUserInChat,
+  markDeletedForEveryone,
   searchChatIdsByContent,
+  findChatsByIdsOrderedForUser,
 };

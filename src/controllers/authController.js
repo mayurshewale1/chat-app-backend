@@ -169,6 +169,15 @@ exports.resetPasswordContext = async (req, res) => {
     if (!user) return res.status(404).json({ message: 'No account found with this mobile number' });
     const full = await userRepo.findById(user.id, true);
     const hasQ = await userRepo.hasSecurityQuestion(user.id);
+    
+    // Security question is now mandatory for password reset
+    if (!hasQ) {
+      return res.status(400).json({ 
+        message: 'Security question is required for password reset. Please set one in your profile first.',
+        requiresSecurityQuestion: true
+      });
+    }
+    
     return res.json({
       hasSecurityQuestion: hasQ,
       question: full?.security_question || null,
@@ -209,14 +218,23 @@ exports.resetPassword = async (req, res) => {
   if (!user) return res.status(404).json({ message: 'No account found with this mobile number' });
 
   const needsSecurity = await userRepo.hasSecurityQuestion(user.id);
-  if (needsSecurity) {
-    if (securityAnswer == null || String(securityAnswer).trim() === '') {
-      return res.status(400).json({ message: 'Security answer required' });
-    }
-    const ok = await userRepo.verifySecurityAnswer(user.id, securityAnswer);
-    if (!ok) {
-      return res.status(401).json({ message: 'Wrong security answer' });
-    }
+  
+  // Security question is now mandatory for password reset
+  if (!needsSecurity) {
+    return res.status(400).json({ 
+      message: 'Security question is required for password reset. Please set one in your profile first.',
+      requiresSecurityQuestion: true
+    });
+  }
+  
+  // Security answer is now always required
+  if (securityAnswer == null || String(securityAnswer).trim() === '') {
+    return res.status(400).json({ message: 'Security answer is required for password reset' });
+  }
+  
+  const ok = await userRepo.verifySecurityAnswer(user.id, securityAnswer);
+  if (!ok) {
+    return res.status(401).json({ message: 'Wrong security answer' });
   }
 
   try {
