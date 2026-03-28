@@ -345,9 +345,26 @@ exports.deleteChat = async (req, res) => {
     const memberIds = members.map((m) => m.id);
     if (!memberIds.includes(req.user.id)) return res.status(403).json({ message: 'Not a member' });
 
+    // Delete all messages in this chat
+    await messageRepo.deleteByChatId(chatId);
+    
+    // Clear the last message preview
+    await chatRepo.updateLastMessage(chatId, null);
+    
+    // Record chat deletion for this user
     await deletedChatRepo.recordDeletion(req.user.id, chatId);
+    
     const io = getIo();
-    if (io) io.to(`user:${req.user.id}`).emit('chat:deleted', { chatId });
+    if (io) {
+      io.to(`user:${req.user.id}`).emit('chat:deleted', { chatId });
+      
+      // Notify other chat member that messages were cleared
+      const otherUser = members.find((m) => m.id !== req.user.id);
+      if (otherUser) {
+        io.to(`user:${otherUser.id}`).emit('chat:cleared', { chatId });
+      }
+    }
+    
     return res.status(200).json({ status: 'deleted' });
   } catch (err) {
     console.error(err);
