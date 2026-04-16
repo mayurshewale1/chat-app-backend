@@ -300,6 +300,37 @@ exports.uploadChatDocument = async (req, res) => {
   }
 };
 
+exports.uploadChatVoice = async (req, res) => {
+  const { chatId } = req.params;
+  if (!req.file) return res.status(400).json({ message: 'No voice file provided' });
+
+  try {
+    const chat = await chatRepo.findById(chatId);
+    if (!chat) return res.status(404).json({ message: 'Chat not found' });
+
+    const userDeleted = await deletedChatRepo.isDeletedByUser(req.user.id, chatId);
+    if (userDeleted) {
+      await deletedChatRepo.clearDeletion(req.user.id, chatId);
+    }
+
+    const members = await chatRepo.getMembers(chatId);
+    const memberIds = members.map((m) => m.id);
+    if (!memberIds.includes(req.user.id)) return res.status(403).json({ message: 'Not a member' });
+
+    const other = members.find((m) => m.id !== req.user.id);
+    if (other) {
+      const isBlocked = await blockRepo.isBlocked(req.user.id, other.id) || await blockRepo.isBlocked(other.id, req.user.id);
+      if (isBlocked) return res.status(403).json({ message: 'Cannot access chat with blocked user' });
+    }
+
+    const voicePath = `/uploads/voice-notes/${req.file.filename}`;
+    return res.status(201).json({ path: voicePath });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+};
+
 exports.clearChat = async (req, res) => {
   const { chatId } = req.params;
 

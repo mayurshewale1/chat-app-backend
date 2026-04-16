@@ -94,6 +94,14 @@ BEGIN
   END IF;
 END $$;
 
+-- Voice message duration in seconds
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'messages' AND column_name = 'duration') THEN
+    ALTER TABLE messages ADD COLUMN duration INTEGER;
+  END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS connections (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   from_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,

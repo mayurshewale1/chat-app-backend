@@ -71,6 +71,7 @@ function toMessageResponse(row) {
     isDeleted: !!row.deleted_for_everyone,
     isSaved: !!row.is_saved,
     replyTo,
+    duration: row.duration || null,
   };
 }
 

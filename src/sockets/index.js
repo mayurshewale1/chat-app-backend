@@ -110,9 +110,17 @@ function initSockets(io) {
           expireAt: null,
           isSaved: norm.isSaved,
           replyTo: payload.replyTo || null,
+          duration: payload.duration || null,
         });
 
-        const lastMsgDisplay = payload.type === 'media' ? '📷 Photo' : payload.content;
+        let lastMsgDisplay;
+        if (payload.type === 'media') {
+          lastMsgDisplay = '📷 Photo';
+        } else if (payload.type === 'voice') {
+          lastMsgDisplay = '🎙️ Voice note';
+        } else {
+          lastMsgDisplay = payload.content;
+        }
         await chatRepo.updateLastMessage(payload.chatId, lastMsgDisplay);
 
         io.to(`user:${payload.to}`).emit('message:new', toMessageResponse(message));
@@ -121,7 +129,14 @@ function initSockets(io) {
         if (!isOnline(payload.to)) {
           const fromUser = await userRepo.findById(user.id);
           const fromName = fromUser?.display_name || fromUser?.username || 'Someone';
-          const preview = payload.type === 'media' ? '📷 Photo' : (payload.content || 'New message');
+          let preview;
+          if (payload.type === 'media') {
+            preview = '📷 Photo';
+          } else if (payload.type === 'voice') {
+            preview = '🎙️ Voice note';
+          } else {
+            preview = payload.content || 'New message';
+          }
           pushService.notifyNewMessage({
             toUserId: payload.to,
             fromUserId: user.id,
