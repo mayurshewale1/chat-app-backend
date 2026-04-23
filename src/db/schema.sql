@@ -1,29 +1,34 @@
--- Chat App PostgreSQL Schema for Neon
--- Run this in Neon SQL Editor or via migration
+-- Chat App PostgreSQL Schema
+-- Complete schema with all columns and tables
 -- gen_random_uuid() is built-in in PostgreSQL 13+
 
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   username VARCHAR(50) NOT NULL UNIQUE,
   password VARCHAR(255) NOT NULL,
-  recovery_email VARCHAR(255) NOT NULL UNIQUE,
+  recovery_email VARCHAR(255),
   display_name VARCHAR(100),
-  avatar VARCHAR(20) DEFAULT '👤',
+  avatar VARCHAR(500) DEFAULT '👤',
   uid VARCHAR(20) NOT NULL UNIQUE,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  app_logo VARCHAR(500),
+  last_seen TIMESTAMPTZ,
+  subscription_expires_at TIMESTAMPTZ,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  mobile VARCHAR(20) UNIQUE,
+  notifications_enabled BOOLEAN DEFAULT TRUE,
+  read_receipts_enabled BOOLEAN DEFAULT TRUE,
+  security_question VARCHAR(255),
+  security_answer_hash VARCHAR(255),
+  privacy_mask_caller BOOLEAN NOT NULL DEFAULT FALSE,
+  terms_accepted_at TIMESTAMPTZ
 );
 
--- Add avatar column if table already exists (migration)
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='avatar') THEN
-    ALTER TABLE users ADD COLUMN avatar VARCHAR(20) DEFAULT '👤';
-  END IF;
-END $$;
-
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
-CREATE INDEX IF NOT EXISTS idx_users_recovery_email ON users(recovery_email);
+CREATE INDEX IF NOT EXISTS idx_users_recovery_email ON users(recovery_email) WHERE recovery_email IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_users_uid ON users(uid);
+CREATE INDEX IF NOT EXISTS idx_users_mobile ON users(mobile) WHERE mobile IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_users_active ON users(active) WHERE active = TRUE;
 
 CREATE TABLE IF NOT EXISTS chats (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -60,47 +65,19 @@ CREATE TABLE IF NOT EXISTS messages (
   ephemeral_mode VARCHAR(20) CHECK (ephemeral_mode IN ('24h', '7d', 'viewOnce', 'deleteOnExit')),
   expire_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  deleted_for_everyone BOOLEAN NOT NULL DEFAULT FALSE
+  deleted_for_everyone BOOLEAN NOT NULL DEFAULT FALSE,
+  first_seen_at TIMESTAMPTZ,
+  is_saved BOOLEAN NOT NULL DEFAULT FALSE,
+  reply_to_message_id UUID REFERENCES messages(id) ON DELETE SET NULL,
+  reply_to_text TEXT,
+  reply_to_sender BOOLEAN,
+  reply_to_type VARCHAR(20),
+  duration INTEGER,
+  file_name VARCHAR(255)
 );
 
 CREATE INDEX IF NOT EXISTS idx_messages_chat ON messages(chat_id);
 CREATE INDEX IF NOT EXISTS idx_messages_expire ON messages(expire_at) WHERE expire_at IS NOT NULL;
-
--- Ephemeral: first time recipient viewed (seenAt in API), keep-after-read flag
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'messages' AND column_name = 'first_seen_at') THEN
-    ALTER TABLE messages ADD COLUMN first_seen_at TIMESTAMPTZ;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'messages' AND column_name = 'is_saved') THEN
-    ALTER TABLE messages ADD COLUMN is_saved BOOLEAN NOT NULL DEFAULT FALSE;
-  END IF;
-END $$;
-
--- Reply functionality: reference to message being replied to
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'messages' AND column_name = 'reply_to_message_id') THEN
-    ALTER TABLE messages ADD COLUMN reply_to_message_id UUID REFERENCES messages(id) ON DELETE SET NULL;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'messages' AND column_name = 'reply_to_text') THEN
-    ALTER TABLE messages ADD COLUMN reply_to_text TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'messages' AND column_name = 'reply_to_sender') THEN
-    ALTER TABLE messages ADD COLUMN reply_to_sender BOOLEAN;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'messages' AND column_name = 'reply_to_type') THEN
-    ALTER TABLE messages ADD COLUMN reply_to_type VARCHAR(20);
-  END IF;
-END $$;
-
--- Voice message duration in seconds
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'messages' AND column_name = 'duration') THEN
-    ALTER TABLE messages ADD COLUMN duration INTEGER;
-  END IF;
-END $$;
 
 CREATE TABLE IF NOT EXISTS connections (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -113,22 +90,6 @@ CREATE TABLE IF NOT EXISTS connections (
 
 CREATE INDEX IF NOT EXISTS idx_connections_from ON connections(from_user_id);
 CREATE INDEX IF NOT EXISTS idx_connections_to ON connections(to_user_id);
-
--- Extend avatar column to store image URLs (up to 500 chars)
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='avatar') THEN
-    ALTER TABLE users ALTER COLUMN avatar TYPE VARCHAR(500);
-  END IF;
-END $$;
-
--- App logo: user-customizable app icon (shown in app header)
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='app_logo') THEN
-    ALTER TABLE users ADD COLUMN app_logo VARCHAR(500);
-  END IF;
-END $$;
 
 -- Call history
 CREATE TABLE IF NOT EXISTS call_history (
@@ -144,54 +105,6 @@ CREATE TABLE IF NOT EXISTS call_history (
 CREATE INDEX IF NOT EXISTS idx_call_history_caller ON call_history(caller_id);
 CREATE INDEX IF NOT EXISTS idx_call_history_callee ON call_history(callee_id);
 CREATE INDEX IF NOT EXISTS idx_call_history_created ON call_history(created_at DESC);
-
--- Last seen for online/offline status
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='last_seen') THEN
-    ALTER TABLE users ADD COLUMN last_seen TIMESTAMPTZ;
-  END IF;
-END $$;
-
--- Subscription for yearly plan (₹199)
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='subscription_expires_at') THEN
-    ALTER TABLE users ADD COLUMN subscription_expires_at TIMESTAMPTZ;
-  END IF;
-END $$;
-
--- Active status for soft delete
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='active') THEN
-    ALTER TABLE users ADD COLUMN active BOOLEAN NOT NULL DEFAULT TRUE;
-  END IF;
-END $$;
-
--- Mobile column for phone-based registration
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='mobile') THEN
-    ALTER TABLE users ADD COLUMN mobile VARCHAR(20);
-  END IF;
-END $$;
-
--- Make recovery_email nullable (phone registration doesn't require email)
-DO $$
-BEGIN
-  ALTER TABLE users ALTER COLUMN recovery_email DROP NOT NULL;
-EXCEPTION
-  WHEN others THEN NULL;
-END $$;
-
--- Terms acceptance tracking
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='terms_accepted_at') THEN
-    ALTER TABLE users ADD COLUMN terms_accepted_at TIMESTAMPTZ;
-  END IF;
-END $$;
 
 -- Connection codes: one-time unique IDs for adding friends
 CREATE TABLE IF NOT EXISTS connection_codes (
@@ -216,5 +129,31 @@ CREATE TABLE IF NOT EXISTS blocks (
 CREATE INDEX IF NOT EXISTS idx_blocks_blocker ON blocks(blocker_id);
 CREATE INDEX IF NOT EXISTS idx_blocks_blocked ON blocks(blocked_id);
 
--- See migrations/add_request_history_security_privacy_archive.sql for:
--- connection_history_hidden, chat_archives (unused; archive feature removed), users.security_question, security_answer_hash, privacy_mask_caller
+-- Request history dismissals
+CREATE TABLE IF NOT EXISTS connection_history_hidden (
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  connection_id UUID NOT NULL REFERENCES connections(id) ON DELETE CASCADE,
+  hidden_at TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (user_id, connection_id)
+);
+CREATE INDEX IF NOT EXISTS idx_conn_hidden_user ON connection_history_hidden(user_id);
+
+-- Archived chats (per user)
+CREATE TABLE IF NOT EXISTS chat_archives (
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  chat_id UUID NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+  archived_at TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (user_id, chat_id)
+);
+CREATE INDEX IF NOT EXISTS idx_chat_archives_user ON chat_archives(user_id);
+
+-- Device tokens for push notifications (FCM)
+CREATE TABLE IF NOT EXISTS device_tokens (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  fcm_token VARCHAR(500) NOT NULL,
+  platform VARCHAR(10) CHECK (platform IN ('android', 'ios')),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, fcm_token)
+);
+CREATE INDEX IF NOT EXISTS idx_device_tokens_user ON device_tokens(user_id);

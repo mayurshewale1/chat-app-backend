@@ -72,6 +72,7 @@ function toMessageResponse(row) {
     isSaved: !!row.is_saved,
     replyTo,
     duration: row.duration || null,
+    fileName: row.file_name || null,
   };
 }
 

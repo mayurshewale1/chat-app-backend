@@ -293,7 +293,7 @@ exports.uploadChatDocument = async (req, res) => {
     }
 
     const documentPath = `/uploads/documents/${req.file.filename}`;
-    return res.status(201).json({ path: documentPath });
+    return res.status(201).json({ path: documentPath, fileName: req.file.originalname });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error' });

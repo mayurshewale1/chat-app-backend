@@ -111,6 +111,7 @@ function initSockets(io) {
           isSaved: norm.isSaved,
           replyTo: payload.replyTo || null,
           duration: payload.duration || null,
+          fileName: payload.fileName || null,
         });
 
         let lastMsgDisplay;
