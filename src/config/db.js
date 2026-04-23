@@ -23,7 +23,7 @@ const connectDB = async () => {
     const client = await pool.connect();
     await client.query('SELECT 1');
     client.release();
-    logger.info('PostgreSQL (Neon) Connected');
+    logger.info('PostgreSQL Connected');
   } catch (error) {
     logger.error('PostgreSQL connection failed', error);
     process.exit(1);

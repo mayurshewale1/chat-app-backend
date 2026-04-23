@@ -23,6 +23,7 @@ const toUserResponse = (row) => ({
   recoveryEmail: row.recovery_email,
   mobile: row.mobile,
   createdAt: row.created_at,
+  termsAcceptedAt: row.terms_accepted_at,
 });
 
 exports.sendOtp = async (req, res) => {

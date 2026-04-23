@@ -52,9 +52,9 @@ const create = async ({ username, password, displayName, recoveryEmail, mobile }
 
   if (mobile) {
     const res = await query(
-      `INSERT INTO users (username, password, display_name, uid, mobile)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, uid, username, display_name, avatar, mobile, created_at`,
+      `INSERT INTO users (username, password, display_name, uid, mobile, terms_accepted_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())
+       RETURNING id, uid, username, display_name, avatar, mobile, created_at, terms_accepted_at`,
       [username, hashedPassword, displayName || null, uid, mobile]
     );
     return res.rows[0];
@@ -62,9 +62,9 @@ const create = async ({ username, password, displayName, recoveryEmail, mobile }
 
   const email = String(recoveryEmail || '').trim().toLowerCase();
   const res = await query(
-    `INSERT INTO users (username, password, recovery_email, display_name, uid)
-     VALUES ($1, $2, $3, $4, $5)
-     RETURNING id, uid, username, display_name, avatar, recovery_email, created_at`,
+    `INSERT INTO users (username, password, recovery_email, display_name, uid, terms_accepted_at)
+     VALUES ($1, $2, $3, $4, $5, NOW())
+     RETURNING id, uid, username, display_name, avatar, recovery_email, created_at, terms_accepted_at`,
     [username, hashedPassword, email || null, displayName || null, uid]
   );
   return res.rows[0];

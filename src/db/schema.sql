@@ -185,6 +185,14 @@ EXCEPTION
   WHEN others THEN NULL;
 END $$;
 
+-- Terms acceptance tracking
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='terms_accepted_at') THEN
+    ALTER TABLE users ADD COLUMN terms_accepted_at TIMESTAMPTZ;
+  END IF;
+END $$;
+
 -- Connection codes: one-time unique IDs for adding friends
 CREATE TABLE IF NOT EXISTS connection_codes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
