@@ -161,6 +161,14 @@ BEGIN
   END IF;
 END $$;
 
+-- Active status for soft delete
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='active') THEN
+    ALTER TABLE users ADD COLUMN active BOOLEAN NOT NULL DEFAULT TRUE;
+  END IF;
+END $$;
+
 -- Connection codes: one-time unique IDs for adding friends
 CREATE TABLE IF NOT EXISTS connection_codes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
