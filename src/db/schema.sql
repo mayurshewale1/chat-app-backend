@@ -177,6 +177,14 @@ BEGIN
   END IF;
 END $$;
 
+-- Make recovery_email nullable (phone registration doesn't require email)
+DO $$
+BEGIN
+  ALTER TABLE users ALTER COLUMN recovery_email DROP NOT NULL;
+EXCEPTION
+  WHEN others THEN NULL;
+END $$;
+
 -- Connection codes: one-time unique IDs for adding friends
 CREATE TABLE IF NOT EXISTS connection_codes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
