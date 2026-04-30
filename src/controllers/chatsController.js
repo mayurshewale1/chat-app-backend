@@ -228,7 +228,14 @@ exports.sendMessage = async (req, res) => {
       isSaved: norm.isSaved,
     });
 
-    const lastMsgDisplay = (type || 'text') === 'media' ? '📷 Photo' : content;
+    let lastMsgDisplay;
+    if ((type || 'text') === 'media') {
+      lastMsgDisplay = '📷 Photo';
+    } else if ((type || 'text') === 'document') {
+      lastMsgDisplay = '📄 Document';
+    } else {
+      lastMsgDisplay = content;
+    }
     await chatRepo.updateLastMessage(chatId, lastMsgDisplay);
 
     return res.status(201).json(toMessageResponse(message));

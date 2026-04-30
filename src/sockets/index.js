@@ -119,6 +119,8 @@ function initSockets(io) {
           lastMsgDisplay = '📷 Photo';
         } else if (payload.type === 'voice') {
           lastMsgDisplay = '🎙️ Voice note';
+        } else if (payload.type === 'document') {
+          lastMsgDisplay = '📄 Document';
         } else {
           lastMsgDisplay = payload.content;
         }
@@ -135,6 +137,8 @@ function initSockets(io) {
             preview = '📷 Photo';
           } else if (payload.type === 'voice') {
             preview = '🎙️ Voice note';
+          } else if (payload.type === 'document') {
+            preview = '📄 Document';
           } else {
             preview = payload.content || 'New message';
           }
